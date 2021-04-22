@@ -42,6 +42,7 @@ import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.protocol.saml.JaxrsSAML2BindingBuilder;
+import org.keycloak.protocol.saml.SamlProtocol;
 import org.keycloak.protocol.saml.SamlService;
 import org.keycloak.protocol.saml.SamlSessionUtils;
 import org.keycloak.protocol.saml.preprocessor.SamlAuthenticationPreprocessor;
@@ -141,7 +142,7 @@ public class SAMLIdentityProvider extends AbstractIdentityProvider<SAMLIdentityP
                         .setAllowCreate(Boolean.TRUE))
                     .requestedAuthnContext(requestedAuthnContext)
                     .subject(loginHint);
-
+            
             JaxrsSAML2BindingBuilder binding = new JaxrsSAML2BindingBuilder(session)
                     .relayState(request.getState().getEncoded());
             boolean postBinding = getConfig().isPostBindingAuthnRequest();
@@ -166,6 +167,9 @@ public class SAMLIdentityProvider extends AbstractIdentityProvider<SAMLIdentityP
             if (authnRequest.getDestination() != null) {
                 destinationUrl = authnRequest.getDestination().toString();
             }
+            
+            logger.debug("Binding RequestID to the session: " + authnRequest.getID());
+            request.getAuthenticationSession().setClientNote(SamlProtocol.SAML_REQUEST_ID, authnRequest.getID());
 
             if (postBinding) {
                 return binding.postBinding(authnRequestBuilder.toDocument()).request(destinationUrl);

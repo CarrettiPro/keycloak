@@ -23,6 +23,7 @@ import org.jboss.resteasy.annotations.cache.NoCache;
 import org.keycloak.broker.provider.BrokeredIdentityContext;
 import org.keycloak.broker.provider.IdentityBrokerException;
 import org.keycloak.broker.provider.IdentityProvider;
+import org.keycloak.broker.provider.util.IdentityBrokerState;
 import org.keycloak.common.ClientConnection;
 import org.keycloak.common.VerificationException;
 import org.keycloak.dom.saml.v2.assertion.AssertionType;
@@ -39,6 +40,7 @@ import org.keycloak.events.Details;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
+import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeyManager;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
@@ -63,7 +65,9 @@ import org.keycloak.saml.processing.core.util.XMLSignatureUtil;
 import org.keycloak.saml.processing.web.util.PostBindingUtil;
 import org.keycloak.services.ErrorPage;
 import org.keycloak.services.managers.AuthenticationManager;
+import org.keycloak.services.managers.AuthenticationSessionManager;
 import org.keycloak.services.messages.Messages;
+import org.keycloak.sessions.AuthenticationSessionModel;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.FormParam;
@@ -388,6 +392,15 @@ public class SAMLEndpoint {
                 return configEntityId;
         }
 
+        private AuthenticationSessionModel getAuthenticationSession(String encodedCode) {
+            IdentityBrokerState state = IdentityBrokerState.encoded(encodedCode);
+            String clientId = state.getClientId();
+            String tabId = state.getTabId();
+            AuthenticationSessionManager authenticationSessionManager = new AuthenticationSessionManager(session);
+            ClientModel client = session.clients().getClientByClientId(realm, clientId);
+            return authenticationSessionManager.getCurrentAuthenticationSession(realm, client, tabId);
+        }
+        
         protected Response handleLoginResponse(String samlResponse, SAMLDocumentHolder holder, ResponseType responseType, String relayState, String clientId) {
 
             try {
@@ -400,6 +413,22 @@ public class SAMLEndpoint {
                     return callback.error(relayState, Messages.IDENTITY_PROVIDER_UNEXPECTED_ERROR);
                 }
 
+                AuthenticationSessionModel authenticationSession = getAuthenticationSession(relayState);
+                if (authenticationSession != null) {
+                    // SP-initiated SSO
+                    String requestID = authenticationSession.getClientNote(SamlProtocol.SAML_REQUEST_ID);
+                    String inResponseTo = responseType.getInResponseTo();
+                    logger.debug("Resolved RequestID from session: " + requestID);
+                    logger.debug("InResponseTo: " + inResponseTo);
+                    // InResponseTo could be also present in SubjectConfirmationData, see SAML Core 2.4.1.2
+                    // responseType.getAssertions().get(0).getAssertion().getSubject().getConfirmation().get(0).getSubjectConfirmationData().getInResponseTo();
+                    if (inResponseTo == null || inResponseTo.trim().isEmpty() || !inResponseTo.equals(requestID)) {
+                        logger.error("InResponseTo is missing or doesn't match RequestID");
+                        event.event(EventType.IDENTITY_PROVIDER_RESPONSE);
+                        event.error(Errors.INVALID_SAML_RESPONSE);
+                        return ErrorPage.error(session, null, Response.Status.BAD_REQUEST, Messages.INVALID_REQUESTER);
+                    }
+                }
                 boolean assertionIsEncrypted = AssertionUtil.isAssertionEncrypted(responseType);
 
                 if (config.isWantAssertionsEncrypted() && !assertionIsEncrypted) {
