@@ -17,20 +17,36 @@
 
 package org.keycloak.util;
 
+import org.keycloak.common.util.Base64Url;
 import org.keycloak.crypto.KeyUse;
 import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.jose.jwk.JSONWebKeySet;
 import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jwk.JWKParser;
+import org.keycloak.jose.jws.crypto.HashUtils;
 
+import java.io.IOException;
 import java.security.PublicKey;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
+import org.keycloak.crypto.KeyType;
+import org.keycloak.jose.jwk.ECPublicJWK;
+import org.keycloak.jose.jwk.RSAPublicJWK;
 
 /**
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
  */
 public class JWKSUtils {
+
+    private static final String JWK_THUMBPRINT_DEFAULT_HASH_ALGORITHM = "SHA-256";
+
+    private static final Map<String, String[]> JWK_THUMBPRINT_REQUIRED_MEMBERS = new HashMap<>();
+    
+    static {
+        JWK_THUMBPRINT_REQUIRED_MEMBERS.put(KeyType.RSA, new String[] { RSAPublicJWK.MODULUS, RSAPublicJWK.PUBLIC_EXPONENT });
+        JWK_THUMBPRINT_REQUIRED_MEMBERS.put(KeyType.EC, new String[] { ECPublicJWK.CRV, ECPublicJWK.X, ECPublicJWK.Y });
+    }
 
     public static Map<String, PublicKey> getKeysForUse(JSONWebKeySet keySet, JWK.Use requestedUse) {
         Map<String, PublicKey> result = new HashMap<>();
@@ -104,4 +120,26 @@ public class JWKSUtils {
         keyWrapper.setPublicKey(parser.toPublicKey());
         return keyWrapper;
     }
+
+    public static String computeThumbprint(JWK key)  {
+        return computeThumbprint(key, JWK_THUMBPRINT_DEFAULT_HASH_ALGORITHM);
+    }
+    
+    public static String computeThumbprint(JWK key, String hashAlg)  {        
+        Map<String, String> members = new TreeMap<>();
+        members.put(JWK.KEY_TYPE, key.getKeyType());
+        
+        for (String member : JWK_THUMBPRINT_REQUIRED_MEMBERS.get(key.getKeyType())) {
+            members.put(member, (String) key.getOtherClaims().get(member));
+        }
+        
+        try {
+            byte[] bytes = JsonSerialization.writeValueAsBytes(members);
+            byte[] hash = HashUtils.hash(hashAlg, bytes);
+            return Base64Url.encode(hash);
+        } catch (IOException ex) {
+            return null;
+        }
+    }
+    
 }
