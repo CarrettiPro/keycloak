@@ -50,18 +50,7 @@ public class JWKSUtils {
         for (JWK jwk : keySet.getKeys()) {
             JWKParser parser = JWKParser.create(jwk);
             if (jwk.getPublicKeyUse().equals(requestedUse.asString()) && parser.isKeyTypeSupported(jwk.getKeyType())) {
-                KeyWrapper keyWrapper = new KeyWrapper();
-                keyWrapper.setKid(jwk.getKeyId());
-                if (jwk.getAlgorithm() != null) {
-                    keyWrapper.setAlgorithm(jwk.getAlgorithm());
-                }
-                else if (jwk.getKeyType().equalsIgnoreCase("RSA")){
-                    //backwards compatibility: RSA keys without "alg" field set are considered RS256
-                    keyWrapper.setAlgorithm("RS256");
-                }
-                keyWrapper.setType(jwk.getKeyType());
-                keyWrapper.setUse(getKeyUse(jwk.getPublicKeyUse()));
-                keyWrapper.setPublicKey(parser.toPublicKey());
+                KeyWrapper keyWrapper = wrap(jwk, parser);
                 result.put(keyWrapper.getKid(), keyWrapper);
             }
         }
@@ -88,5 +77,31 @@ public class JWKSUtils {
         }
 
         return null;
+    }
+    
+    public static KeyWrapper getKeyWrapper(JWK jwk) {
+        JWKParser parser = JWKParser.create(jwk);
+        if (parser.isKeyTypeSupported(jwk.getKeyType())) {
+            return wrap(jwk, parser);
+        } else {
+            return null;
+        }
+    }
+
+    private static KeyWrapper wrap(JWK jwk, JWKParser parser) {
+        KeyWrapper keyWrapper = new KeyWrapper();
+        keyWrapper.setKid(jwk.getKeyId());
+        if (jwk.getAlgorithm() != null) {
+            keyWrapper.setAlgorithm(jwk.getAlgorithm());
+        }
+        else if (jwk.getKeyType().equalsIgnoreCase("RSA")){
+            //backwards compatibility: RSA keys without "alg" field set are considered RS256
+            keyWrapper.setAlgorithm("RS256");
+        }
+        keyWrapper.setType(jwk.getKeyType());
+        if (jwk.getPublicKeyUse() != null)
+            keyWrapper.setUse(getKeyUse(jwk.getPublicKeyUse()));
+        keyWrapper.setPublicKey(parser.toPublicKey());
+        return keyWrapper;
     }
 }

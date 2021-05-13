@@ -7,6 +7,8 @@ import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.DERSequenceGenerator;
 import org.bouncycastle.asn1.x9.X9IntegerConverter;
 import org.keycloak.common.VerificationException;
+import org.keycloak.jose.jwk.JWK;
+import org.keycloak.util.JWKSUtils;
 import org.keycloak.models.KeycloakSession;
 
 import java.io.ByteArrayOutputStream;
@@ -33,6 +35,10 @@ public class ECDSASignatureProvider implements SignatureProvider {
         return new ServerECDSASignatureVerifierContext(session, kid, algorithm);
     }
 
+    @Override
+    public SignatureVerifierContext verifier(JWK key) throws VerificationException {
+        return new ServerECDSASignatureVerifierContext(JWKSUtils.getKeyWrapper(key));
+    }
     public static byte[] concatenatedRSToASN1DER(final byte[] signature, int signLength) throws IOException {
         int len = signLength / 2;
         int arraySize = len + 1;

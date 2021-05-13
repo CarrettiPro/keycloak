@@ -17,6 +17,7 @@
 package org.keycloak.crypto;
 
 import org.keycloak.common.VerificationException;
+import org.keycloak.jose.jwk.JWK;
 import org.keycloak.provider.Provider;
 
 public interface SignatureProvider extends Provider {
@@ -24,6 +25,8 @@ public interface SignatureProvider extends Provider {
     SignatureSignerContext signer() throws SignatureException;
 
     SignatureVerifierContext verifier(String kid) throws VerificationException;
+
+    SignatureVerifierContext verifier(JWK key) throws VerificationException;
 
     @Override
     default void close() {

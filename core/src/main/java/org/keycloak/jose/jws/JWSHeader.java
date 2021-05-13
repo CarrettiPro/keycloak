@@ -25,6 +25,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.Serializable;
 
+import org.keycloak.jose.jwk.JWK;
+
 /**
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
  * @version $Revision: 1 $
@@ -42,6 +44,9 @@ public class JWSHeader implements Serializable {
 
     @JsonProperty("kid")
     private String keyId;
+
+    @JsonProperty("jwk")
+    private JWK key;
 
     public JWSHeader() {
     }
@@ -72,6 +77,10 @@ public class JWSHeader implements Serializable {
 
     public String getKeyId() {
         return keyId;
+    }
+
+    public JWK getKey() {
+        return key;
     }
 
     private static final ObjectMapper mapper = new ObjectMapper();
