@@ -25,6 +25,15 @@ import org.keycloak.util.JWKSUtils;
 
 public class DPoPUtil {
 
+    public static final int DEFAULT_PROOF_LIFETIME = 10000;
+    public static final int DEFAULT_ALLOWED_CLOCK_SKEW = 1000;
+
+    public static enum Mode {
+        ENABLED,
+        OPTIONAL,
+        DISABLED
+    }
+
     private static final String DPOP_HEADER = "DPoP";
     private static final String DPOP_HEADER_TYPE = "dpop+jwt";
     private static final Set<String> DPOP_SUPPORTED_ALGS = Stream.of(

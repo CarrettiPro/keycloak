@@ -22,6 +22,7 @@ import org.keycloak.jose.jws.Algorithm;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.Constants;
 import org.keycloak.representations.idm.ClientRepresentation;
+import org.keycloak.services.util.DPoPUtil;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -129,6 +130,38 @@ public class OIDCAdvancedConfigWrapper {
     public void setUseMtlsHoKToken(boolean useUtlsHokToken) {
         String val = String.valueOf(useUtlsHokToken);
         setAttribute(OIDCConfigAttributes.USE_MTLS_HOK_TOKEN, val);
+    }
+
+    // KEYCLOAK-XXXX Demonstrating Proof-of-Possession
+    // TODO: JIRA
+    public DPoPUtil.Mode getDPoPMode() {
+        String mode = getAttribute(OIDCConfigAttributes.DPOP_MODE);
+        return mode == null ? null : Enum.valueOf(DPoPUtil.Mode.class, mode);
+    }
+
+    public void setDPoPMode(DPoPUtil.Mode mode) {
+        String modeStr = mode == null ? null : mode.toString();
+        setAttribute(OIDCConfigAttributes.DPOP_MODE, modeStr);
+    }
+
+    public int getDPoPProofLifetime() {
+        String lifetime = getAttribute(OIDCConfigAttributes.DPOP_PROOF_LIFETIME);
+        return lifetime == null ? DPoPUtil.DEFAULT_PROOF_LIFETIME : Integer.parseInt(lifetime);
+    }
+
+    public void setDPoPProofLifetime(int lifetime) {
+        String val = String.valueOf(lifetime);
+        setAttribute(OIDCConfigAttributes.DPOP_PROOF_LIFETIME, val);
+    }
+
+    public int getDPoPAllowedClockSkew() {
+        String clockSkew = getAttribute(OIDCConfigAttributes.DPOP_ALLOWED_CLOCK_SKEW);
+        return clockSkew == null ? DPoPUtil.DEFAULT_ALLOWED_CLOCK_SKEW : Integer.parseInt(clockSkew);
+    }
+
+    public void setDPoPAllowedClockSkew(int clockSkew) {
+        String val = String.valueOf(clockSkew);
+        setAttribute(OIDCConfigAttributes.DPOP_ALLOWED_CLOCK_SKEW, val);
     }
 
     /**
