@@ -13,13 +13,17 @@ import org.jboss.resteasy.spi.HttpRequest;
 
 import org.keycloak.TokenVerifier;
 import org.keycloak.common.VerificationException;
+import org.keycloak.common.util.Time;
 import org.keycloak.crypto.Algorithm;
 import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.crypto.SignatureProvider;
 import org.keycloak.crypto.SignatureVerifierContext;
+import org.keycloak.exceptions.TokenNotActiveException;
 import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jws.JWSHeader;
+import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.protocol.oidc.OIDCAdvancedConfigWrapper;
 import org.keycloak.representations.dpop.DPoP;
 import org.keycloak.util.JWKSUtils;
 
@@ -81,7 +85,10 @@ public class DPoPUtil {
         key.setAlgorithm(header.getAlgorithm().name());
         SignatureVerifierContext signatureVerifier = session.getProvider(SignatureProvider.class, algorithm).verifier(key);
         verifier.verifierContext(signatureVerifier);
-        DPoP dpop = verifier.withChecks(new DPoPClaimsCheck(), new DPoPHTTPCheck(request, uri)).verify().getToken();
+        DPoP dpop = verifier.withChecks(
+                new DPoPClaimsCheck(),
+                new DPoPHTTPCheck(request, uri),
+                new DPoPIsActiveCheck(session.getContext().getClient())).verify().getToken();
         dpop.setThumbprint(JWKSUtils.computeThumbprint(key));
         return dpop;
     }
@@ -122,5 +129,28 @@ public class DPoPUtil {
         }
         
     }
+
+    private static class DPoPIsActiveCheck implements TokenVerifier.Predicate<DPoP> {
+
+        private final int clockSkew;
+        private final int lifetime;
+
+        public DPoPIsActiveCheck(ClientModel client) {
+            OIDCAdvancedConfigWrapper config = OIDCAdvancedConfigWrapper.fromClientModel(client);
+            this.clockSkew = config.getDPoPAllowedClockSkew();
+            this.lifetime = config.getDPoPProofLifetime();
+        }
+
+        @Override
+        public boolean test(DPoP t) throws VerificationException {
+            long time = Time.currentTimeMillis();
+            Long iat = t.getIat() * 1000;
+
+            if (!(iat <= time + clockSkew && iat >= time - lifetime)) {
+                throw new TokenNotActiveException(t, "DPoP proof is not active");
+            }
+            return true;
+        }
+    };
 
 }
