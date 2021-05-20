@@ -105,12 +105,23 @@ public class AccessToken extends IDToken {
         @JsonProperty("x5t#S256")
         protected String certThumbprint;
 
+        @JsonProperty("jkt")
+        protected String keyThumbprint;
+
         public String getCertThumbprint() {
             return certThumbprint;
         }
 
         public void setCertThumbprint(String certThumbprint) {
             this.certThumbprint = certThumbprint;
+        }
+
+        public String getKeyThumbprint() {
+            return keyThumbprint;
+        }
+
+        public void setKeyThumbprint(String keyThumbprint) {
+            this.keyThumbprint = keyThumbprint;
         }
     }
 
