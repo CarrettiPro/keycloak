@@ -88,7 +88,7 @@ public class DPoPUtil {
         DPoP dpop = verifier.withChecks(
                 DPoPClaimsCheck.INSTANCE,
                 new DPoPHTTPCheck(request, uri),
-                new DPoPIsActiveCheck(session.getContext().getClient())).verify().getToken();
+                new DPoPIsActiveCheck(session)).verify().getToken();
         dpop.setThumbprint(JWKSUtils.computeThumbprint(key));
         return dpop;
     }
@@ -137,7 +137,8 @@ public class DPoPUtil {
         private final int clockSkew;
         private final int lifetime;
 
-        public DPoPIsActiveCheck(ClientModel client) {
+        public DPoPIsActiveCheck(KeycloakSession session) {
+            ClientModel client = session.getContext().getClient();
             OIDCAdvancedConfigWrapper config = OIDCAdvancedConfigWrapper.fromClientModel(client);
             this.clockSkew = config.getDPoPAllowedClockSkew();
             this.lifetime = config.getDPoPProofLifetime();
