@@ -67,11 +67,13 @@ public class DPoPUtil {
                 throw new VerificationException("Private key is present in DPoP header");
             }
         }
-        
+
         key.setAlgorithm(header.getAlgorithm().name());
         SignatureVerifierContext signatureVerifier = session.getProvider(SignatureProvider.class, algorithm).verifier(key);
         verifier.verifierContext(signatureVerifier);
-        return verifier.withChecks(new DPoPClaimsCheck(), new DPoPHTTPCheck(request, uri)).verify().getToken();
+        DPoP dpop = verifier.withChecks(new DPoPClaimsCheck(), new DPoPHTTPCheck(request, uri)).verify().getToken();
+        dpop.setThumbprint(JWKSUtils.computeThumbprint(key));
+        return dpop;
     }
 
     private static class DPoPClaimsCheck implements TokenVerifier.Predicate<DPoP> {

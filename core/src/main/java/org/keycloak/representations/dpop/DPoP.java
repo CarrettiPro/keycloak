@@ -4,27 +4,29 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import org.keycloak.representations.JsonWebToken;
 
 public class DPoP extends JsonWebToken {
-    
+
     private static final String ATH = "ath";
     private static final String HTM = "htm";
     private static final String HTU = "htu";
-    
+
     @JsonProperty(ATH)
     private String accessTokenHash;
 
     @JsonProperty(HTM)
     private String httpMethod;
-    
+
     @JsonProperty(HTU)
     private String httpUri;
-    
+
+    private String thumbprint;
+
     public String getAccessTokenHash() {
         return accessTokenHash;
     }
     public void setAccessTokenHash(String accessTokenHash) {
         this.accessTokenHash = accessTokenHash;
     }
-    
+
     public String getHttpMethod() {
         return httpMethod;
     }
@@ -40,5 +42,13 @@ public class DPoP extends JsonWebToken {
     public void setHttpUri(String httpUri) {
         this.httpUri = httpUri;
     }
-    
+
+    public String getThumbprint() {
+        return thumbprint;
+    }
+
+    public void setThumbprint(String thumbprint) {
+        this.thumbprint = thumbprint;
+    }
+
 }
