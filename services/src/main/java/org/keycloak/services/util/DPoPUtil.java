@@ -5,10 +5,11 @@ import java.net.URISyntaxException;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import javax.ws.rs.core.HttpHeaders;
 
-import javax.ws.rs.core.Request;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.UriInfo;
+
+import org.jboss.resteasy.spi.HttpRequest;
 
 import org.keycloak.TokenVerifier;
 import org.keycloak.common.VerificationException;
@@ -37,8 +38,8 @@ public class DPoPUtil {
         Algorithm.RS384,
         Algorithm.RS512
     ).collect(Collectors.toSet());
-    
-    public static DPoP validateDPoP(KeycloakSession session, HttpHeaders headers, Request request, UriInfo uri) throws VerificationException {
+
+    public static DPoP validateDPoP(KeycloakSession session, HttpHeaders headers, HttpRequest request, UriInfo uri) throws VerificationException {
         String token = headers.getHeaderString(DPOP_HEADER);
         TokenVerifier<DPoP> verifier = TokenVerifier.create(token, DPoP.class);
 
@@ -47,15 +48,15 @@ public class DPoPUtil {
         if (!DPOP_HEADER_TYPE.equals(header.getType())) {
             throw new VerificationException("Invalid or missing type in DPoP header: " + header.getType());
         }
-        
+
         String algorithm = header.getAlgorithm().name();
-        
+
         if (!DPOP_SUPPORTED_ALGS.contains(algorithm)) {
             throw new VerificationException("Unsupported DPoP algorithm: " + header.getAlgorithm());
         }
-        
+
         JWK key = header.getKey();
-        
+
         if (key == null) {
             throw new VerificationException("No JWK in DPoP header");
         } else {
@@ -88,15 +89,15 @@ public class DPoPUtil {
                 htm != null && !htm.trim().equals("") &&
                 htu != null && !htu.trim().equals("");
         }
-        
+
     }
-    
+
     private static class DPoPHTTPCheck implements TokenVerifier.Predicate<DPoP> {
 
-        private final Request request;
+        private final HttpRequest request;
         private final UriInfo uri;
-        
-        DPoPHTTPCheck(Request request, UriInfo uri) {
+
+        DPoPHTTPCheck(HttpRequest request, UriInfo uri) {
             this.request = request;
             this.uri = uri;
         }
@@ -105,7 +106,7 @@ public class DPoPUtil {
         public boolean test(DPoP t) throws VerificationException {
             try {
                 return new URI(t.getHttpUri()).equals(uri.getAbsolutePath()) &&
-                    request.getMethod().equals(t.getHttpMethod());
+                    request.getHttpMethod().equals(t.getHttpMethod());
             } catch (URISyntaxException ex) {
                 return false;
             }
