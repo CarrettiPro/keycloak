@@ -86,7 +86,7 @@ public class DPoPUtil {
         SignatureVerifierContext signatureVerifier = session.getProvider(SignatureProvider.class, algorithm).verifier(key);
         verifier.verifierContext(signatureVerifier);
         DPoP dpop = verifier.withChecks(
-                new DPoPClaimsCheck(),
+                DPoPClaimsCheck.INSTANCE,
                 new DPoPHTTPCheck(request, uri),
                 new DPoPIsActiveCheck(session.getContext().getClient())).verify().getToken();
         dpop.setThumbprint(JWKSUtils.computeThumbprint(key));
@@ -94,6 +94,8 @@ public class DPoPUtil {
     }
 
     private static class DPoPClaimsCheck implements TokenVerifier.Predicate<DPoP> {
+
+        static final TokenVerifier.Predicate<DPoP> INSTANCE = new DPoPClaimsCheck();
 
         @Override
         public boolean test(DPoP t) throws VerificationException {
