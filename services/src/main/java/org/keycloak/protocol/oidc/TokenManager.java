@@ -348,10 +348,10 @@ public class TokenManager {
         // KEYCLOAK-6771 Certificate Bound Token
         // https://tools.ietf.org/html/draft-ietf-oauth-mtls-08#section-3.1
         // bind refreshed access and refresh token with Client Certificate
-        AccessToken.CertConf certConf = refreshToken.getCertConf();
+        AccessToken.Confirmation certConf = refreshToken.getConfirmation();
         if (certConf != null) {
-            responseBuilder.getAccessToken().setCertConf(certConf);
-            responseBuilder.getRefreshToken().setCertConf(certConf);
+            responseBuilder.getAccessToken().setConfirmation(certConf);
+            responseBuilder.getRefreshToken().setConfirmation(certConf);
         }
 
         String scopeParam = clientSession.getNote(OAuth2Constants.SCOPE);

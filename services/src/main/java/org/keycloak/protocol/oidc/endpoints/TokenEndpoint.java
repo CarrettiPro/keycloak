@@ -442,10 +442,10 @@ public class TokenEndpoint {
         // KEYCLOAK-6771 Certificate Bound Token
         // https://tools.ietf.org/html/draft-ietf-oauth-mtls-08#section-3
         if (OIDCAdvancedConfigWrapper.fromClientModel(client).isUseMtlsHokToken()) {
-            AccessToken.CertConf certConf = MtlsHoKTokenUtil.bindTokenWithClientCertificate(request, session);
-            if (certConf != null) {
-                responseBuilder.getAccessToken().setCertConf(certConf);
-                responseBuilder.getRefreshToken().setCertConf(certConf);
+            AccessToken.Confirmation confirmation = MtlsHoKTokenUtil.bindTokenWithClientCertificate(request, session);
+            if (confirmation != null) {
+                responseBuilder.getAccessToken().setConfirmation(confirmation);
+                responseBuilder.getRefreshToken().setConfirmation(confirmation);
             } else {
                 event.error(Errors.INVALID_REQUEST);
                 throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "Client Certification missing for MTLS HoK Token Binding", Response.Status.BAD_REQUEST);

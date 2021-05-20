@@ -101,7 +101,7 @@ public class AccessToken extends IDToken {
 
     // KEYCLOAK-6771 Certificate Bound Token
     // https://tools.ietf.org/html/draft-ietf-oauth-mtls-08#section-3.1
-    public static class CertConf {
+    public static class Confirmation {
         @JsonProperty("x5t#S256")
         protected String certThumbprint;
 
@@ -130,7 +130,7 @@ public class AccessToken extends IDToken {
     protected Authorization authorization;
 
     @JsonProperty("cnf")
-    protected CertConf certConf;
+    protected Confirmation confirmation;
 
     @JsonProperty("scope")
     protected String scope;
@@ -262,12 +262,12 @@ public class AccessToken extends IDToken {
         this.authorization = authorization;
     }
     
-    public CertConf getCertConf() {
-        return certConf;
+    public Confirmation getConfirmation() {
+        return confirmation;
     }
 
-    public void setCertConf(CertConf certConf) {
-        this.certConf = certConf;
+    public void setConfirmation(Confirmation confirmation) {
+        this.confirmation = confirmation;
     }
 
     public String getScope() {
