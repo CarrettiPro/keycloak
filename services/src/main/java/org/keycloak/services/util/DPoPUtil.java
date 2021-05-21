@@ -30,8 +30,8 @@ import org.keycloak.util.JWKSUtils;
 
 public class DPoPUtil {
 
-    public static final int DEFAULT_PROOF_LIFETIME = 10000;
-    public static final int DEFAULT_ALLOWED_CLOCK_SKEW = 1000;
+    public static final int DEFAULT_PROOF_LIFETIME = 10;
+    public static final int DEFAULT_ALLOWED_CLOCK_SKEW = 2;
 
     public static enum Mode {
         ENABLED,
@@ -160,7 +160,7 @@ public class DPoPUtil {
             if (revocation.isRevoked(t.getId())) {
                 throw new TokenNotActiveException(t, "DPoP proof has been revoked");
             } else {
-                revocation.putRevokedToken(t.getId(), (t.getIat() * 1000 + lifetime - Time.currentTimeMillis()) / 1000);
+                revocation.putRevokedToken(t.getId(), t.getIat() + lifetime - Time.currentTime());
                 return true;
             }
         }
@@ -181,10 +181,10 @@ public class DPoPUtil {
 
         @Override
         public boolean test(DPoP t) throws VerificationException {
-            long time = Time.currentTimeMillis();
-            Long iat = t.getIat() * 1000;
+            long time = Time.currentTime();
+            Long iat = t.getIat();
 
-            if (!(iat <= time + clockSkew && iat >= time - lifetime)) {
+            if (!(iat <= time + clockSkew && iat > time - lifetime)) {
                 throw new TokenNotActiveException(t, "DPoP proof is not active");
             }
             return true;
