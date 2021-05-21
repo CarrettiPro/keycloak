@@ -102,10 +102,14 @@ public class DPoPUtil {
             Long iat = t.getIat();
             String jti = t.getId(), htu = t.getHttpUri(), htm = t.getHttpMethod();
 
-            return iat != null &&
+            if (iat != null &&
                 jti != null && !jti.trim().equals("") &&
                 htm != null && !htm.trim().equals("") &&
-                htu != null && !htu.trim().equals("");
+                htu != null && !htu.trim().equals("")) {
+                return true;
+            } else {
+                throw new VerificationException("DPoP mandatory claims are missing");
+            }
         }
 
     }
@@ -123,13 +127,17 @@ public class DPoPUtil {
         @Override
         public boolean test(DPoP t) throws VerificationException {
             try {
-                return new URI(t.getHttpUri()).equals(uri.getAbsolutePath()) &&
-                    request.getHttpMethod().equals(t.getHttpMethod());
+                if (new URI(t.getHttpUri()).equals(uri.getAbsolutePath()) &&
+                    request.getHttpMethod().equals(t.getHttpMethod())) {
+                    return true;
+                } else {
+                    throw new VerificationException("DPoP HTTP method/URL mismatch");
+                }
             } catch (URISyntaxException ex) {
-                return false;
+                throw new VerificationException("Malformed HTTP URL in DPoP proof");
             }
         }
-        
+
     }
 
     private static class DPoPIsActiveCheck implements TokenVerifier.Predicate<DPoP> {
