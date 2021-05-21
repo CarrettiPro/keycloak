@@ -75,11 +75,11 @@ public class OIDCAdvancedConfigWrapper {
         String algStr = alg==null ? null : alg.toString();
         setAttribute(OIDCConfigAttributes.REQUEST_OBJECT_SIGNATURE_ALG, algStr);
     }
-    
+
     public String getRequestObjectRequired() {
         return getAttribute(OIDCConfigAttributes.REQUEST_OBJECT_REQUIRED);
     }
-    
+
     public void setRequestObjectRequired(String requestObjectRequired) {
         setAttribute(OIDCConfigAttributes.REQUEST_OBJECT_REQUIRED, requestObjectRequired);
     }
@@ -136,7 +136,7 @@ public class OIDCAdvancedConfigWrapper {
     // TODO: JIRA
     public DPoPUtil.Mode getDPoPMode() {
         String mode = getAttribute(OIDCConfigAttributes.DPOP_MODE);
-        return mode == null ? null : Enum.valueOf(DPoPUtil.Mode.class, mode);
+        return mode == null ? DPoPUtil.Mode.DISABLED : Enum.valueOf(DPoPUtil.Mode.class, mode);
     }
 
     public void setDPoPMode(DPoPUtil.Mode mode) {
