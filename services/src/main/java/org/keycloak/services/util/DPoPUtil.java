@@ -23,6 +23,7 @@ import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jws.JWSHeader;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.TokenRevocationStoreProvider;
 import org.keycloak.protocol.oidc.OIDCAdvancedConfigWrapper;
 import org.keycloak.representations.dpop.DPoP;
 import org.keycloak.util.JWKSUtils;
@@ -88,7 +89,8 @@ public class DPoPUtil {
         DPoP dpop = verifier.withChecks(
                 DPoPClaimsCheck.INSTANCE,
                 new DPoPHTTPCheck(request, uri),
-                new DPoPIsActiveCheck(session)).verify().getToken();
+                new DPoPIsActiveCheck(session),
+                new DPoPReplayCheck(session)).verify().getToken();
         dpop.setThumbprint(JWKSUtils.computeThumbprint(key));
         return dpop;
     }
@@ -135,6 +137,31 @@ public class DPoPUtil {
                 }
             } catch (URISyntaxException ex) {
                 throw new VerificationException("Malformed HTTP URL in DPoP proof");
+            }
+        }
+
+    }
+
+    private static class DPoPReplayCheck implements TokenVerifier.Predicate<DPoP> {
+
+        private final KeycloakSession session;
+        private final int lifetime;
+
+        public DPoPReplayCheck(KeycloakSession session) {
+            this.session = session;
+            ClientModel client = session.getContext().getClient();
+            OIDCAdvancedConfigWrapper config = OIDCAdvancedConfigWrapper.fromClientModel(client);
+            this.lifetime = config.getDPoPProofLifetime();
+        }
+
+        @Override
+        public boolean test(DPoP t) throws VerificationException {
+            TokenRevocationStoreProvider revocation = session.getProvider(TokenRevocationStoreProvider.class);
+            if (revocation.isRevoked(t.getId())) {
+                throw new TokenNotActiveException(t, "DPoP proof has been revoked");
+            } else {
+                revocation.putRevokedToken(t.getId(), (t.getIat() * 1000 + lifetime - Time.currentTimeMillis()) / 1000);
+                return true;
             }
         }
 
