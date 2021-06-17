@@ -32,6 +32,7 @@ public class DPoPUtil {
 
     public static final int DEFAULT_PROOF_LIFETIME = 10;
     public static final int DEFAULT_ALLOWED_CLOCK_SKEW = 2;
+    public static final String DPOP_TOKEN_TYPE = "DPoP";
 
     public static enum Mode {
         ENABLED,
@@ -189,6 +190,6 @@ public class DPoPUtil {
             }
             return true;
         }
-    };
+    }
 
 }

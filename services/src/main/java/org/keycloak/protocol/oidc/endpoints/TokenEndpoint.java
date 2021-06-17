@@ -36,6 +36,7 @@ import org.keycloak.broker.provider.IdentityProviderMapper;
 import org.keycloak.broker.provider.IdentityProviderMapperSyncModeDelegate;
 import org.keycloak.common.ClientConnection;
 import org.keycloak.common.Profile;
+import org.keycloak.common.VerificationException;
 import org.keycloak.common.constants.ServiceAccountConstants;
 import org.keycloak.common.util.Base64Url;
 import org.keycloak.common.util.KeycloakUriBuilder;
@@ -73,6 +74,7 @@ import org.keycloak.protocol.saml.SamlService;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.AccessTokenResponse;
 import org.keycloak.representations.JsonWebToken;
+import org.keycloak.representations.dpop.DPoP;
 import org.keycloak.representations.idm.authorization.AuthorizationRequest.Metadata;
 import org.keycloak.saml.common.constants.GeneralConstants;
 import org.keycloak.saml.common.constants.JBossSAMLConstants;
@@ -98,6 +100,7 @@ import org.keycloak.services.resources.Cors;
 import org.keycloak.services.resources.IdentityBrokerService;
 import org.keycloak.services.resources.admin.AdminAuth;
 import org.keycloak.services.resources.admin.permissions.AdminPermissions;
+import org.keycloak.services.util.DPoPUtil;
 import org.keycloak.services.util.MtlsHoKTokenUtil;
 import org.keycloak.services.util.DefaultClientSessionContext;
 import org.keycloak.services.validation.Validation;
@@ -147,6 +150,7 @@ public class TokenEndpoint {
     private ClientModel client;
     private Map<String, String> clientAuthAttributes;
     private OIDCAdvancedConfigWrapper clientConfig;
+    private DPoP dPoP;
 
     private enum Action {
         AUTHORIZATION_CODE, REFRESH_TOKEN, PASSWORD, CLIENT_CREDENTIALS, TOKEN_EXCHANGE, PERMISSION
@@ -196,7 +200,7 @@ public class TokenEndpoint {
         if (formParameters == null) {
             formParameters = new MultivaluedHashMap<>();
         }
-        
+
         formParams = formParameters;
         grantType = formParams.getFirst(OIDCLoginProtocol.GRANT_TYPE_PARAM);
 
@@ -213,6 +217,12 @@ public class TokenEndpoint {
 
         if (!action.equals(Action.PERMISSION)) {
             checkClient();
+        }
+
+        if (action.equals(Action.AUTHORIZATION_CODE) ||
+            action.equals(Action.REFRESH_TOKEN) ||
+            action.equals(Action.PASSWORD)) {
+            checkDPoP();
         }
 
         switch (action) {
@@ -306,6 +316,19 @@ public class TokenEndpoint {
         }
 
         event.detail(Details.GRANT_TYPE, grantType);
+    }
+
+    private void checkDPoP() {
+        DPoPUtil.Mode mode = clientConfig.getDPoPMode();
+
+        if (mode == DPoPUtil.Mode.ENABLED) {
+            try {
+                dPoP = DPoPUtil.validateDPoP(session, headers, request, session.getContext().getUri());
+            } catch (VerificationException ex) {
+                event.error(Errors.INVALID_REQUEST);
+                throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_DPOP_PROOF, "DPoP proof is missing or invalid", Response.Status.BAD_REQUEST);
+            }
+        }
     }
 
     public Response codeToToken() {
@@ -454,10 +477,24 @@ public class TokenEndpoint {
             }
         }
 
+        // KEYCLOAK-XXXX Demonstrating Proof-of-Possession
+        // https://tools.ietf.org/id/draft-ietf-oauth-dpop-03.html#name-public-key-confirmation
+        // TODO: JIRA
+        if (clientConfig.getDPoPMode().equals(DPoPUtil.Mode.ENABLED)) {
+            AccessToken.Confirmation confirmation = responseBuilder.getAccessToken().getConfirmation();
+            if (confirmation == null) {
+                confirmation = new AccessToken.Confirmation();
+            }
+            confirmation.setKeyThumbprint(dPoP.getThumbprint());
+            responseBuilder.getAccessToken().setConfirmation(confirmation);
+            responseBuilder.getRefreshToken().setConfirmation(confirmation);
+            responseBuilder.getAccessToken().type(DPoPUtil.DPOP_TOKEN_TYPE);
+        }
+
         if (TokenUtil.isOIDCRequest(scopeParam)) {
             responseBuilder.generateIDToken().generateAccessTokenHash();
         }
-        
+
         AccessTokenResponse res = null;
         try {
             res = responseBuilder.build();
@@ -468,7 +505,11 @@ public class TokenEndpoint {
                 throw re;
             }
         }
-        
+
+        if (clientConfig.getDPoPMode().equals(DPoPUtil.Mode.ENABLED)) {
+            res.setTokenType(DPoPUtil.DPOP_TOKEN_TYPE);
+        }
+
         event.success();
 
         return cors.builder(Response.ok(res).type(MediaType.APPLICATION_JSON_TYPE)).build();
@@ -669,9 +710,26 @@ public class TokenEndpoint {
             responseBuilder.generateIDToken().generateAccessTokenHash();
         }
 
+        // KEYCLOAK-XXXX Demonstrating Proof-of-Possession
+        // https://tools.ietf.org/id/draft-ietf-oauth-dpop-03.html#name-public-key-confirmation
+        // TODO: JIRA
+        if (clientConfig.getDPoPMode().equals(DPoPUtil.Mode.ENABLED)) {
+            AccessToken.Confirmation confirmation = responseBuilder.getAccessToken().getConfirmation();
+            if (confirmation == null) {
+                confirmation = new AccessToken.Confirmation();
+            }
+            confirmation.setKeyThumbprint(dPoP.getThumbprint());
+            responseBuilder.getAccessToken().setConfirmation(confirmation);
+            responseBuilder.getRefreshToken().setConfirmation(confirmation);
+            responseBuilder.getAccessToken().type(DPoPUtil.DPOP_TOKEN_TYPE);
+        }
+
         // TODO : do the same as codeToToken()
         AccessTokenResponse res = responseBuilder.build();
 
+        if (clientConfig.getDPoPMode().equals(DPoPUtil.Mode.ENABLED)) {
+            res.setTokenType(DPoPUtil.DPOP_TOKEN_TYPE);
+        }
 
         event.success();
         AuthenticationManager.logSuccess(session, authSession);

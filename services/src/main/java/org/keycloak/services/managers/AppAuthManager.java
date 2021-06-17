@@ -35,6 +35,7 @@ import java.util.regex.Pattern;
 public class AppAuthManager extends AuthenticationManager {
 
     private static final String BEARER = "Bearer";
+    private static final String DPOP = "DPoP";
 
     private static final Pattern WHITESPACES = Pattern.compile("\\s+");
 
@@ -65,7 +66,7 @@ public class AppAuthManager extends AuthenticationManager {
         }
 
         String bearerPart = split[0];
-        if (!bearerPart.equalsIgnoreCase(BEARER)){
+        if (!bearerPart.equalsIgnoreCase(BEARER) && !bearerPart.equalsIgnoreCase(DPOP)){
             return null;
         }
 
