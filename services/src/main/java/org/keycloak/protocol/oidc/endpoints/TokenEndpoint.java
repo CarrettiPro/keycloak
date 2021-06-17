@@ -146,6 +146,7 @@ public class TokenEndpoint {
     private MultivaluedMap<String, String> formParams;
     private ClientModel client;
     private Map<String, String> clientAuthAttributes;
+    private OIDCAdvancedConfigWrapper clientConfig;
 
     private enum Action {
         AUTHORIZATION_CODE, REFRESH_TOKEN, PASSWORD, CLIENT_CREDENTIALS, TOKEN_EXCHANGE, PERMISSION
@@ -265,6 +266,7 @@ public class TokenEndpoint {
         AuthorizeClientUtil.ClientAuthResult clientAuth = AuthorizeClientUtil.authorizeClient(session, event);
         client = clientAuth.getClient();
         clientAuthAttributes = clientAuth.getClientAuthAttributes();
+        clientConfig = OIDCAdvancedConfigWrapper.fromClientModel(client);
 
         cors.allowedOrigins(session, client);
 
@@ -441,7 +443,7 @@ public class TokenEndpoint {
 
         // KEYCLOAK-6771 Certificate Bound Token
         // https://tools.ietf.org/html/draft-ietf-oauth-mtls-08#section-3
-        if (OIDCAdvancedConfigWrapper.fromClientModel(client).isUseMtlsHokToken()) {
+        if (clientConfig.isUseMtlsHokToken()) {
             AccessToken.Confirmation confirmation = MtlsHoKTokenUtil.bindTokenWithClientCertificate(request, session);
             if (confirmation != null) {
                 responseBuilder.getAccessToken().setConfirmation(confirmation);
@@ -722,7 +724,7 @@ public class TokenEndpoint {
         // persisting of userSession by default
         UserSessionModel.SessionPersistenceState sessionPersistenceState = UserSessionModel.SessionPersistenceState.PERSISTENT;
 
-        boolean useRefreshToken = OIDCAdvancedConfigWrapper.fromClientModel(client).isUseRefreshTokenForClientCredentialsGrant();
+        boolean useRefreshToken = clientConfig.isUseRefreshTokenForClientCredentialsGrant();
         if (!useRefreshToken) {
             // we don't want to store a session hence we mark it as transient, see KEYCLOAK-9551
             sessionPersistenceState = UserSessionModel.SessionPersistenceState.TRANSIENT;
