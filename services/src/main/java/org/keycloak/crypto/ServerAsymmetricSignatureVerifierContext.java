@@ -21,6 +21,10 @@ import org.keycloak.models.KeycloakSession;
 
 public class ServerAsymmetricSignatureVerifierContext extends AsymmetricSignatureVerifierContext {
 
+    public ServerAsymmetricSignatureVerifierContext(KeyWrapper key) throws VerificationException {
+        super(key);
+    }
+
     public ServerAsymmetricSignatureVerifierContext(KeycloakSession session, String kid, String algorithm) throws VerificationException {
         super(getKey(session, kid, algorithm));
     }

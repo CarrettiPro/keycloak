@@ -895,6 +895,14 @@
                 <kc-tooltip>{{:: 'tls-client-certificate-bound-access-tokens.tooltip' | translate}}</kc-tooltip>
             </div>
 
+            <div class="form-group clearfix block" data-ng-show="protocol == 'openid-connect'">
+                <label class="col-md-2 control-label" for="dpopBoundAccessTokens">{{:: 'dpop-bound-access-tokens' | translate}}</label>
+                <div class="col-sm-6">
+                    <input ng-model="dpopBoundAccessTokens" ng-click="switchChange()" name="dpopBoundAccessTokens" id="dpopBoundAccessTokens" onoffswitch on-text="{{:: 'onText' | translate}}" off-text="{{:: 'offText' | translate}}"/>
+                </div>
+                <kc-tooltip>{{:: 'dpop-bound-access-tokens.tooltip' | translate}}</kc-tooltip>
+            </div>
+
             <div class="form-group clearfix block" data-ng-show="protocol == 'openid-connect' && clientEdit.standardFlowEnabled && clientEdit.implicitFlowEnabled">
                 <label class="col-md-2 control-label" for="useIdTokenAsDetachedSignature">{{:: 'use-idtoken-as-detached-signature' | translate}}</label>
                 <div class="col-sm-6">

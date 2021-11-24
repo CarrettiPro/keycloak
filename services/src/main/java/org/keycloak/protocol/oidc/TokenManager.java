@@ -64,12 +64,14 @@ import org.keycloak.representations.IDToken;
 import org.keycloak.representations.JsonWebToken;
 import org.keycloak.representations.LogoutToken;
 import org.keycloak.representations.RefreshToken;
+import org.keycloak.representations.dpop.DPoP;
 import org.keycloak.services.ErrorResponseException;
 import org.keycloak.services.managers.AuthenticationManager;
 import org.keycloak.services.managers.AuthenticationSessionManager;
 import org.keycloak.services.managers.UserSessionCrossDCManager;
 import org.keycloak.services.managers.UserSessionManager;
 import org.keycloak.services.resources.IdentityBrokerService;
+import org.keycloak.services.util.DPoPUtil;
 import org.keycloak.services.util.DefaultClientSessionContext;
 import org.keycloak.services.util.MtlsHoKTokenUtil;
 import org.keycloak.sessions.AuthenticationSessionModel;
@@ -365,6 +367,7 @@ public class TokenManager {
 
         TokenValidation validation = validateToken(session, uriInfo, connection, realm, refreshToken, headers);
         AuthenticatedClientSessionModel clientSession = validation.clientSessionCtx.getClientSession();
+        OIDCAdvancedConfigWrapper clientConfig = OIDCAdvancedConfigWrapper.fromClientModel(authorizedClient);
 
         // validate authorizedClient is same as validated client
         if (!clientSession.getClient().getId().equals(authorizedClient.getId())) {
@@ -383,23 +386,25 @@ public class TokenManager {
 
         AccessTokenResponseBuilder responseBuilder = responseBuilder(realm, authorizedClient, event, session,
             validation.userSession, validation.clientSessionCtx).accessToken(validation.newToken);
-        if (OIDCAdvancedConfigWrapper.fromClientModel(authorizedClient).isUseRefreshToken()) {
+        if (clientConfig.isUseRefreshToken()) {
             responseBuilder.generateRefreshToken();
         }
 
         if (validation.newToken.getAuthorization() != null
-            && OIDCAdvancedConfigWrapper.fromClientModel(authorizedClient).isUseRefreshToken()) {
+            && clientConfig.isUseRefreshToken()) {
             responseBuilder.getRefreshToken().setAuthorization(validation.newToken.getAuthorization());
         }
 
         // KEYCLOAK-6771 Certificate Bound Token
         // https://tools.ietf.org/html/draft-ietf-oauth-mtls-08#section-3.1
-        // bind refreshed access and refresh token with Client Certificate
-        AccessToken.CertConf certConf = refreshToken.getCertConf();
-        if (certConf != null) {
-            responseBuilder.getAccessToken().setCertConf(certConf);
-            if (OIDCAdvancedConfigWrapper.fromClientModel(authorizedClient).isUseRefreshToken()) {
-                responseBuilder.getRefreshToken().setCertConf(certConf);
+        // KEYCLOAK-15169 OAuth 2.0 Demonstrating Proof-of-Possession at the Application Layer (DPoP)
+        // https://tools.ietf.org/id/draft-ietf-oauth-dpop-04.html#section-6
+        // bind refreshed access and refresh token with Client Certificate and/or DPoP key
+        AccessToken.Confirmation confirmation = refreshToken.getConfirmation();
+        if (confirmation != null) {
+            responseBuilder.getAccessToken().setConfirmation(confirmation);
+            if (clientConfig.isUseRefreshToken()) {
+                responseBuilder.getRefreshToken().setConfirmation(confirmation);
             }
         }
 
@@ -409,6 +414,11 @@ public class TokenManager {
         }
 
         AccessTokenResponse res = responseBuilder.build();
+
+        // KEYCLOAK-15169 OAuth 2.0 Demonstrating Proof-of-Possession at the Application Layer (DPoP)
+        if (clientConfig.isDPoPEnabled()) {
+            res.setTokenType(DPoPUtil.DPOP_TOKEN_TYPE);
+        }
 
         return new RefreshResult(res, TokenUtil.TOKEN_TYPE_OFFLINE.equals(refreshToken.getType()));
     }
@@ -490,6 +500,15 @@ public class TokenManager {
                 }
             }
 
+            // KEYCLOAK-15169 OAuth 2.0 Demonstrating Proof-of-Possession at the Application Layer (DPoP)
+            if (OIDCAdvancedConfigWrapper.fromClientModel(client).isDPoPEnabled()) {
+                DPoP dPoP = (DPoP) session.getAttribute("dpop");
+                try {
+                    DPoPUtil.validateBinding(refreshToken, dPoP);
+                } catch (VerificationException ex) {
+                    throw new OAuthErrorException(OAuthErrorException.INVALID_GRANT, ex.getMessage());
+                }
+            }
             return refreshToken;
         } catch (JWSInputException e) {
             throw new OAuthErrorException(OAuthErrorException.INVALID_GRANT, "Invalid refresh token", e);

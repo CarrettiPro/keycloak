@@ -21,6 +21,10 @@ import org.keycloak.models.KeycloakSession;
 
 public class ServerMacSignatureVerifierContext extends MacSignatureVerifierContext {
 
+    public ServerMacSignatureVerifierContext(KeyWrapper key) {
+        super(key);
+    }
+
     public ServerMacSignatureVerifierContext(KeycloakSession session, String kid, String algorithm) throws VerificationException {
         super(getKey(session, kid, algorithm));
     }

@@ -390,9 +390,9 @@ public class HoKTest extends AbstractTestRealmKeycloakTest {
     private void expectSuccessfulResponseFromTokenEndpoint(OAuthClient oauth, String username, AccessTokenResponse response, String sessionId, AccessToken token, RefreshToken refreshToken, EventRepresentation tokenEvent) {
         AccessToken refreshedToken = oauth.verifyToken(response.getAccessToken());
         RefreshToken refreshedRefreshToken = oauth.parseRefreshToken(response.getRefreshToken());
-        if (refreshedToken.getCertConf() != null) {
-            log.warnf("refreshed access token's cnf-x5t#256 = %s", refreshedToken.getCertConf().getCertThumbprint());
-            log.warnf("refreshed refresh token's cnf-x5t#256 = %s", refreshedRefreshToken.getCertConf().getCertThumbprint());    
+        if (refreshedToken.getConfirmation() != null) {
+            log.warnf("refreshed access token's cnf-x5t#256 = %s", refreshedToken.getConfirmation().getCertThumbprint());
+            log.warnf("refreshed refresh token's cnf-x5t#256 = %s", refreshedRefreshToken.getConfirmation().getCertThumbprint());
         }
 
         assertEquals(200, response.getStatusCode());
@@ -624,9 +624,9 @@ public class HoKTest extends AbstractTestRealmKeycloakTest {
         AccessToken at = jws.readJsonContent(AccessToken.class);
         jws = new JWSInput(accessTokenResponse.getRefreshToken());
         RefreshToken rt = jws.readJsonContent(RefreshToken.class);
-        String certThumprintFromAccessToken = at.getCertConf().getCertThumbprint();
-        String certThumprintFromRefreshToken = rt.getCertConf().getCertThumbprint();
-        String certThumprintFromTokenIntrospection = rep.getCertConf().getCertThumbprint();
+        String certThumprintFromAccessToken = at.getConfirmation().getCertThumbprint();
+        String certThumprintFromRefreshToken = rt.getConfirmation().getCertThumbprint();
+        String certThumprintFromTokenIntrospection = rep.getConfirmation().getCertThumbprint();
         String certThumprintFromBoundClientCertificate = MutualTLSUtils.getThumbprintFromDefaultClientCert();
 
         assertTrue(rep.isActive());
@@ -688,7 +688,7 @@ public class HoKTest extends AbstractTestRealmKeycloakTest {
         } catch (JWSInputException e) {
             Assert.fail(e.toString());
         }
-        assertTrue(MessageDigest.isEqual(certThumbPrint.getBytes(), at.getCertConf().getCertThumbprint().getBytes()));
+        assertTrue(MessageDigest.isEqual(certThumbPrint.getBytes(), at.getConfirmation().getCertThumbprint().getBytes()));
 
         if (checkRefreshToken) {
             RefreshToken rt = null;
@@ -698,7 +698,7 @@ public class HoKTest extends AbstractTestRealmKeycloakTest {
             } catch (JWSInputException e) {
                 Assert.fail(e.toString());
             }
-            assertTrue(MessageDigest.isEqual(certThumbPrint.getBytes(), rt.getCertConf().getCertThumbprint().getBytes()));
+            assertTrue(MessageDigest.isEqual(certThumbPrint.getBytes(), rt.getConfirmation().getCertThumbprint().getBytes()));
         }
     }
 }

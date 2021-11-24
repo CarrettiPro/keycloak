@@ -807,7 +807,7 @@ module.controller('ClientRoleDetailCtrl', function($scope, $route, realm, client
     $scope.create = !role.name;
 
     $scope.changed = $scope.create;
-    
+
     $scope.save = function() {
         convertAttributeValuesToLists();
         if ($scope.create) {
@@ -852,7 +852,7 @@ module.controller('ClientRoleDetailCtrl', function($scope, $route, realm, client
         delete $scope.newAttribute;
     }
 
-    $scope.removeAttribute = function(key) {    
+    $scope.removeAttribute = function(key) {
         delete $scope.role.attributes[key];
     }
 
@@ -983,14 +983,14 @@ module.controller('ClientListCtrl', function($scope, realm, Client, ClientListSe
         ClientListSearchState.query.realm = realm.realm;
         $scope.query = ClientListSearchState.query;
 
-        if (!ClientListSearchState.isFirstSearch) { 
+        if (!ClientListSearchState.isFirstSearch) {
             $scope.searchQuery();
         } else {
             $scope.query.clientId = null;
             $scope.firstPage();
         }
     };
-    
+
     $scope.searchQuery = function() {
         console.log("query.search: ", $scope.query);
         $scope.searchLoaded = false;
@@ -1176,9 +1176,15 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
     $scope.disableCredentialsTab = client.publicClient;
     $scope.oauth2DeviceAuthorizationGrantEnabled = false;
     $scope.oidcCibaGrantEnabled = false;
+
     // KEYCLOAK-6771 Certificate Bound Token
     // https://tools.ietf.org/html/draft-ietf-oauth-mtls-08#section-3
     $scope.tlsClientCertificateBoundAccessTokens = false;
+
+    // KEYCLOAK-15169 OAuth 2.0 Demonstrating Proof-of-Possession at the Application Layer (DPoP)
+    // https://tools.ietf.org/id/draft-ietf-oauth-dpop-03.html
+    $scope.dpopBoundAccessTokens = false;
+
     $scope.useRefreshTokens = true;
     $scope.useIdTokenAsDetachedSignature = false;
 
@@ -1371,6 +1377,11 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
         var attrVal8 = $scope.client.attributes['ciba.backchannel.auth.request.signing.alg'];
         $scope.cibaBackchannelAuthRequestSigningAlg = attrVal8==null ? 'any' : attrVal8;
 
+        // KEYCLOAK-15169 OAuth 2.0 Demonstrating Proof-of-Possession at the Application Layer (DPoP)
+        // https://tools.ietf.org/id/draft-ietf-oauth-dpop-04.html
+        var attrVal9 = $scope.client.attributes['dpop.mode'];
+        $scope.dPoPMode = attrVal9==null ? 'DISABLED' : attrVal9;
+
         if ($scope.client.attributes["exclude.session.state.from.auth.response"]) {
             if ($scope.client.attributes["exclude.session.state.from.auth.response"] == "true") {
                 $scope.excludeSessionStateFromAuthResponse = true;
@@ -1420,6 +1431,16 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
                $scope.tlsClientCertificateBoundAccessTokens = true;
            } else {
                $scope.tlsClientCertificateBoundAccessTokens = false;
+           }
+       }
+
+        // KEYCLOAK-15169 OAuth 2.0 Demonstrating Proof-of-Possession at the Application Layer (DPoP)
+        // https://tools.ietf.org/id/draft-ietf-oauth-dpop-03.html#section-6
+       if ($scope.client.attributes["dpop.enabled"]) {
+           if ($scope.client.attributes["dpop.enabled"] == "true") {
+               $scope.dpopBoundAccessTokens = true;
+           } else {
+               $scope.dpopBoundAccessTokens = false;
            }
        }
 
@@ -1908,6 +1929,14 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
             $scope.clientEdit.attributes["tls.client.certificate.bound.access.tokens"] = "false";
         }
 
+        // KEYCLOAK-15169 OAuth 2.0 Demonstrating Proof-of-Possession at the Application Layer (DPoP)
+        // https://tools.ietf.org/id/draft-ietf-oauth-dpop-04.html#section-6
+        if ($scope.dpopBoundAccessTokens == true) {
+            $scope.clientEdit.attributes["dpop.enabled"] = "true";
+        } else {
+            $scope.clientEdit.attributes["dpop.enabled"] = "false";
+        }
+
         // PAR request.
         if ($scope.requirePushedAuthorizationRequests == true) {
             $scope.clientEdit.attributes["require.pushed.authorization.requests"] = "true";
@@ -2095,7 +2124,7 @@ module.controller('ClientScopeMappingCtrl', function($scope, $http, realm, $rout
         });
     }
 
-    
+
     $scope.selectedClient = null;
 
     $scope.selectClient = function(client) {
@@ -2881,7 +2910,7 @@ module.controller('ClientClientScopesEvaluateCtrl', function($scope, Realm, User
     }
 
     clientSelectControl($scope, $route.current.params.realm, Client);
-    
+
     $scope.selectedClient = null;
 
     $scope.selectClient = function(client) {

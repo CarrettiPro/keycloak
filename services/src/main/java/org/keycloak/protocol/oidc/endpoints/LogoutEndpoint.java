@@ -36,6 +36,7 @@ import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.oidc.BackchannelLogoutResponse;
 import org.keycloak.protocol.oidc.LogoutTokenValidationCode;
+import org.keycloak.protocol.oidc.OIDCAdvancedConfigWrapper;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.protocol.oidc.TokenManager;
 import org.keycloak.protocol.oidc.utils.AuthorizeClientUtil;
@@ -43,6 +44,7 @@ import org.keycloak.protocol.oidc.utils.RedirectUtils;
 import org.keycloak.representations.IDToken;
 import org.keycloak.representations.LogoutToken;
 import org.keycloak.representations.RefreshToken;
+import org.keycloak.representations.dpop.DPoP;
 import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.services.ErrorPage;
 import org.keycloak.services.ErrorResponseException;
@@ -52,6 +54,7 @@ import org.keycloak.services.managers.AuthenticationManager;
 import org.keycloak.services.managers.UserSessionManager;
 import org.keycloak.services.messages.Messages;
 import org.keycloak.services.resources.Cors;
+import org.keycloak.services.util.DPoPUtil;
 import org.keycloak.services.util.MtlsHoKTokenUtil;
 import org.keycloak.util.TokenUtil;
 
@@ -94,7 +97,9 @@ public class LogoutEndpoint {
 
     private TokenManager tokenManager;
     private RealmModel realm;
+    private ClientModel client;
     private EventBuilder event;
+    private OIDCAdvancedConfigWrapper clientConfig;
 
     private Cors cors;
 
@@ -228,12 +233,16 @@ public class LogoutEndpoint {
 
         event.event(EventType.LOGOUT);
 
-        ClientModel client = authorizeClient();
+        client = authorizeClient();
+        clientConfig = OIDCAdvancedConfigWrapper.fromClientModel(client);
+
         String refreshToken = form.getFirst(OAuth2Constants.REFRESH_TOKEN);
         if (refreshToken == null) {
             event.error(Errors.INVALID_TOKEN);
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "No refresh token", Response.Status.BAD_REQUEST);
         }
+
+        checkDPoP(refreshToken);
 
         try {
             session.clientPolicy().triggerOnEvent(new LogoutRequestContext(form));
@@ -455,6 +464,18 @@ public class LogoutEndpoint {
     private void checkSsl() {
         if (!session.getContext().getUri().getBaseUri().getScheme().equals("https") && realm.getSslRequired().isRequired(clientConnection)) {
             throw new CorsErrorResponseException(cors.allowAllOrigins(), "invalid_request", "HTTPS required", Response.Status.FORBIDDEN);
+        }
+    }
+
+    private void checkDPoP(String token) {
+        if (clientConfig.isDPoPEnabled()) {
+            try {
+                DPoP dPoP = DPoPUtil.validateDPoP(session, client, headers, request, session.getContext().getUri(), token);
+                session.setAttribute("dpop", dPoP);
+            } catch (VerificationException ex) {
+                event.error(Errors.INVALID_DPOP_PROOF);
+                throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_DPOP_PROOF, ex.getMessage(), Response.Status.BAD_REQUEST);
+            }
         }
     }
 

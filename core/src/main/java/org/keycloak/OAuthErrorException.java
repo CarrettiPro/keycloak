@@ -53,6 +53,9 @@ public class OAuthErrorException extends Exception {
     public static final String SLOW_DOWN = "slow_down";
     public static final String EXPIRED_TOKEN = "expired_token";
 
+    // DPoP
+    public static final String INVALID_DPOP_PROOF = "invalid_dpop_proof";
+
     // Others
     public static final String INVALID_CLIENT = "invalid_client";
     public static final String INVALID_GRANT = "invalid_grant";

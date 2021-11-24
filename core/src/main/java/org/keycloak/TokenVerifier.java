@@ -292,7 +292,8 @@ public class TokenVerifier<T extends JsonWebToken> {
      * @param checks
      * @return
      */
-    public TokenVerifier<T> withChecks(Predicate<? super T>... checks) {
+    @SafeVarargs
+    public final TokenVerifier<T> withChecks(Predicate<? super T>... checks) {
         if (checks != null) {
             this.checks.addAll(Arrays.asList(checks));
         }

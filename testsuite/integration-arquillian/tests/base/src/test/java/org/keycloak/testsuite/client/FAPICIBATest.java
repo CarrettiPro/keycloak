@@ -624,7 +624,7 @@ public class FAPICIBATest extends AbstractClientPoliciesTest {
 
         AccessToken accessToken = oauth.verifyToken(tokenRes.getAccessToken());
         assertThat(accessToken.getIssuedFor(), is(equalTo(clientId)));
-        Assert.assertNotNull(accessToken.getCertConf().getCertThumbprint());
+        Assert.assertNotNull(accessToken.getConfirmation().getCertThumbprint());
 
 
         RefreshToken refreshToken = oauth.parseRefreshToken(tokenRes.getRefreshToken());

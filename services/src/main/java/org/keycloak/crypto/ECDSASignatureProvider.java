@@ -7,7 +7,9 @@ import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.DERSequenceGenerator;
 import org.bouncycastle.asn1.x9.X9IntegerConverter;
 import org.keycloak.common.VerificationException;
+import org.keycloak.jose.jwk.JWK;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.util.JWKSUtils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -31,6 +33,11 @@ public class ECDSASignatureProvider implements SignatureProvider {
     @Override
     public SignatureVerifierContext verifier(String kid) throws VerificationException {
         return new ServerECDSASignatureVerifierContext(session, kid, algorithm);
+    }
+
+    @Override
+    public SignatureVerifierContext verifier(JWK key) throws VerificationException {
+        return new ServerECDSASignatureVerifierContext(JWKSUtils.getKeyWrapper(key));
     }
 
     @Override

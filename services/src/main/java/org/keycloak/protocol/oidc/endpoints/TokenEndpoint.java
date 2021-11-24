@@ -29,6 +29,7 @@ import org.keycloak.authorization.authorization.AuthorizationTokenService;
 import org.keycloak.authorization.util.Tokens;
 import org.keycloak.common.ClientConnection;
 import org.keycloak.common.Profile;
+import org.keycloak.common.VerificationException;
 import org.keycloak.common.constants.ServiceAccountConstants;
 import org.keycloak.common.util.KeycloakUriBuilder;
 import org.keycloak.constants.AdapterConstants;
@@ -64,6 +65,7 @@ import org.keycloak.protocol.saml.SamlClient;
 import org.keycloak.protocol.saml.SamlProtocol;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.AccessTokenResponse;
+import org.keycloak.representations.dpop.DPoP;
 import org.keycloak.representations.idm.authorization.AuthorizationRequest.Metadata;
 import org.keycloak.saml.common.constants.JBossSAMLConstants;
 import org.keycloak.saml.common.constants.JBossSAMLURIConstants;
@@ -85,6 +87,7 @@ import org.keycloak.services.managers.ClientManager;
 import org.keycloak.services.managers.RealmManager;
 import org.keycloak.services.resources.Cors;
 import org.keycloak.services.util.DefaultClientSessionContext;
+import org.keycloak.services.util.DPoPUtil;
 import org.keycloak.services.util.MtlsHoKTokenUtil;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.keycloak.sessions.RootAuthenticationSessionModel;
@@ -125,6 +128,8 @@ public class TokenEndpoint {
     private MultivaluedMap<String, String> formParams;
     private ClientModel client;
     private Map<String, String> clientAuthAttributes;
+    private OIDCAdvancedConfigWrapper clientConfig;
+    private DPoP dPoP;
 
     private enum Action {
         AUTHORIZATION_CODE, REFRESH_TOKEN, PASSWORD, CLIENT_CREDENTIALS, TOKEN_EXCHANGE, PERMISSION, OAUTH2_DEVICE_CODE, CIBA
@@ -249,6 +254,7 @@ public class TokenEndpoint {
         AuthorizeClientUtil.ClientAuthResult clientAuth = AuthorizeClientUtil.authorizeClient(session, event, cors);
         client = clientAuth.getClient();
         clientAuthAttributes = clientAuth.getClientAuthAttributes();
+        clientConfig = OIDCAdvancedConfigWrapper.fromClientModel(client);
 
         cors.allowedOrigins(session, client);
 
@@ -305,7 +311,25 @@ public class TokenEndpoint {
         }
     }
 
+    private void checkDPoP() {
+        checkDPoP(null);
+    }
+
+    private void checkDPoP(String token) {
+        if (clientConfig.isDPoPEnabled()) {
+            try {
+                dPoP = DPoPUtil.validateDPoP(session, client, headers, request, session.getContext().getUri(), token);
+                session.setAttribute("dpop", dPoP);
+            } catch (VerificationException ex) {
+                event.error(Errors.INVALID_DPOP_PROOF);
+                throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_DPOP_PROOF, ex.getMessage(), Response.Status.BAD_REQUEST);
+            }
+        }
+    }
+
     public Response codeToToken() {
+        checkDPoP();
+
         String code = formParams.getFirst(OAuth2Constants.CODE);
         if (code == null) {
             event.error(Errors.INVALID_CODE);
@@ -441,11 +465,12 @@ public class TokenEndpoint {
 
         TokenManager.AccessTokenResponseBuilder responseBuilder = tokenManager
             .responseBuilder(realm, client, event, session, userSession, clientSessionCtx).accessToken(token);
-        if (OIDCAdvancedConfigWrapper.fromClientModel(client).isUseRefreshToken()) {
+        if (clientConfig.isUseRefreshToken()) {
             responseBuilder.generateRefreshToken();
         }
 
-        checkMtlsHoKToken(responseBuilder, OIDCAdvancedConfigWrapper.fromClientModel(client).isUseRefreshToken());
+        checkMtlsHoKToken(responseBuilder, clientConfig.isUseRefreshToken());
+        checkDPoPToken(responseBuilder, clientConfig.isUseRefreshToken());
 
         if (TokenUtil.isOIDCRequest(scopeParam)) {
             responseBuilder.generateIDToken().generateAccessTokenHash();
@@ -466,6 +491,11 @@ public class TokenEndpoint {
         } else {
             res = responseBuilder.build();
         }
+
+        if (clientConfig.isDPoPEnabled()) {
+            res.setTokenType(DPoPUtil.DPOP_TOKEN_TYPE);
+        }
+
         event.success();
 
         return cors.builder(Response.ok(res).type(MediaType.APPLICATION_JSON_TYPE)).build();
@@ -474,17 +504,29 @@ public class TokenEndpoint {
     private void checkMtlsHoKToken(TokenManager.AccessTokenResponseBuilder responseBuilder, boolean useRefreshToken) {
         // KEYCLOAK-6771 Certificate Bound Token
         // https://tools.ietf.org/html/draft-ietf-oauth-mtls-08#section-3
-        if (OIDCAdvancedConfigWrapper.fromClientModel(client).isUseMtlsHokToken()) {
-            AccessToken.CertConf certConf = MtlsHoKTokenUtil.bindTokenWithClientCertificate(request, session);
-            if (certConf != null) {
-                responseBuilder.getAccessToken().setCertConf(certConf);
+        if (clientConfig.isUseMtlsHokToken()) {
+            AccessToken.Confirmation confirmation = MtlsHoKTokenUtil.bindTokenWithClientCertificate(request, session);
+            if (confirmation != null) {
+                responseBuilder.getAccessToken().setConfirmation(confirmation);
                 if (useRefreshToken) {
-                    responseBuilder.getRefreshToken().setCertConf(certConf);
+                    responseBuilder.getRefreshToken().setConfirmation(confirmation);
                 }
             } else {
                 event.error(Errors.INVALID_REQUEST);
                 throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
                         "Client Certification missing for MTLS HoK Token Binding", Response.Status.BAD_REQUEST);
+            }
+        }
+    }
+
+    private void checkDPoPToken(TokenManager.AccessTokenResponseBuilder responseBuilder, boolean useRefreshToken) {
+        // KEYCLOAK-15169 OAuth 2.0 Demonstrating Proof-of-Possession at the Application Layer (DPoP)
+        // https://tools.ietf.org/id/draft-ietf-oauth-dpop-04.html#section-6
+        if (clientConfig.isDPoPEnabled()) {
+            DPoPUtil.bindToken(responseBuilder.getAccessToken(), dPoP);
+            // TODO do not bind refresh tokens issued to confidential clients, see 5. DPoP Access Token Request
+            if (useRefreshToken) {
+                DPoPUtil.bindToken(responseBuilder.getRefreshToken(), dPoP);
             }
         }
     }
@@ -559,6 +601,8 @@ public class TokenEndpoint {
             throw new CorsErrorResponseException(cors, cpe.getError(), cpe.getErrorDetail(), cpe.getErrorStatus());
         }
 
+        checkDPoP(refreshToken);
+
         AccessTokenResponse res;
         try {
             // KEYCLOAK-6771 Certificate Bound Token
@@ -621,6 +665,8 @@ public class TokenEndpoint {
 
     public Response resourceOwnerPasswordCredentialsGrant() {
         event.detail(Details.AUTH_METHOD, "oauth_credentials");
+
+        checkDPoP();
 
         if (!client.isDirectAccessGrantsEnabled()) {
             event.error(Errors.NOT_ALLOWED);
@@ -685,7 +731,7 @@ public class TokenEndpoint {
 
         TokenManager.AccessTokenResponseBuilder responseBuilder = tokenManager
             .responseBuilder(realm, client, event, session, userSession, clientSessionCtx).generateAccessToken();
-        if (OIDCAdvancedConfigWrapper.fromClientModel(client).isUseRefreshToken()) {
+        if (clientConfig.isUseRefreshToken()) {
             responseBuilder.generateRefreshToken();
         }
 
@@ -695,8 +741,12 @@ public class TokenEndpoint {
         }
 
         // TODO : do the same as codeToToken()
+        checkDPoPToken(responseBuilder, clientConfig.isUseRefreshToken());
         AccessTokenResponse res = responseBuilder.build();
 
+        if (clientConfig.isDPoPEnabled()) {
+            res.setTokenType(DPoPUtil.DPOP_TOKEN_TYPE);
+        }
 
         event.success();
         AuthenticationManager.logSuccess(session, authSession);
@@ -749,7 +799,7 @@ public class TokenEndpoint {
         // persisting of userSession by default
         UserSessionModel.SessionPersistenceState sessionPersistenceState = UserSessionModel.SessionPersistenceState.PERSISTENT;
 
-        boolean useRefreshToken = OIDCAdvancedConfigWrapper.fromClientModel(client).isUseRefreshTokenForClientCredentialsGrant();
+        boolean useRefreshToken = clientConfig.isUseRefreshTokenForClientCredentialsGrant();
         if (!useRefreshToken) {
             // we don't want to store a session hence we mark it as transient, see KEYCLOAK-9551
             sessionPersistenceState = UserSessionModel.SessionPersistenceState.TRANSIENT;
