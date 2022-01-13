@@ -47,6 +47,8 @@ import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.dpop.DPoP;
 import org.keycloak.util.JWKSUtils;
 
+import static org.keycloak.utils.StringUtil.isNotBlank;
+
 /**
  * @author <a href="mailto:dmitryt@backbase.com">Dmitry Telegin</a>
  */
@@ -180,12 +182,14 @@ public class DPoPUtil {
         @Override
         public boolean test(DPoP t) throws DPoPVerificationException {
             Long iat = t.getIat();
-            String jti = t.getId(), htu = t.getHttpUri(), htm = t.getHttpMethod();
+            String jti = t.getId();
+            String htu = t.getHttpUri();
+            String htm = t.getHttpMethod();
 
             if (iat != null &&
-                jti != null && !jti.trim().equals("") &&
-                htm != null && !htm.trim().equals("") &&
-                htu != null && !htu.trim().equals("")) {
+                isNotBlank(jti) &&
+                isNotBlank(htm) &&
+                isNotBlank(htu)) {
                 return true;
             } else {
                 throw new DPoPVerificationException(t, "DPoP mandatory claims are missing");
