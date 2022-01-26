@@ -35,7 +35,7 @@ public class HashUtils {
     // See:
     // - "at_hash" and "c_hash" in OIDC specification (full = false)
     // - "ath" in DPoP specification (full = true)
-    public static String oidcHash(String jwtAlgorithmName, String input, boolean full) {
+    public static String accessTokenHash(String jwtAlgorithmName, String input, boolean full) {
         byte[] inputBytes = input.getBytes(StandardCharsets.UTF_8);
         String javaAlgName = JavaAlgorithm.getJavaAlgorithmForHash(jwtAlgorithmName);
         byte[] hash = hash(javaAlgName, inputBytes);
@@ -43,8 +43,8 @@ public class HashUtils {
         return encodeHashToOIDC(hash, full);
     }
 
-    public static String oidcHash(String jwtAlgorithmName, String input) {
-        return oidcHash(jwtAlgorithmName, input, false);
+    public static String accessTokenHash(String jwtAlgorithmName, String input) {
+        return HashUtils.accessTokenHash(jwtAlgorithmName, input, false);
     }
 
     public static byte[] hash(String javaAlgorithmName, byte[] inputBytes) {

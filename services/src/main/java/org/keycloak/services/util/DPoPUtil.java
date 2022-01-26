@@ -276,7 +276,7 @@ public class DPoPUtil {
         private String hash;
 
         public DPoPAccessTokenHashCheck(String tokenString) {
-            hash = HashUtils.oidcHash(DPOP_ATH_ALG, tokenString, true);
+            hash = HashUtils.accessTokenHash(DPOP_ATH_ALG, tokenString, true);
         }
 
         @Override
