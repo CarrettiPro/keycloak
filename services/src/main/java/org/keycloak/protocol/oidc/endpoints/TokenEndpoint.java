@@ -312,13 +312,9 @@ public class TokenEndpoint {
     }
 
     private void checkDPoP() {
-        checkDPoP(null);
-    }
-
-    private void checkDPoP(String token) {
         if (clientConfig.isDPoPEnabled()) {
             try {
-                dPoP = DPoPUtil.validateDPoP(session, client, headers, request, session.getContext().getUri(), token);
+                dPoP = DPoPUtil.validateDPoP(session, client, headers, request, session.getContext().getUri());
                 session.setAttribute("dpop", dPoP);
             } catch (VerificationException ex) {
                 event.error(Errors.INVALID_DPOP_PROOF);
@@ -470,7 +466,7 @@ public class TokenEndpoint {
         }
 
         checkMtlsHoKToken(responseBuilder, clientConfig.isUseRefreshToken());
-        checkDPoPToken(responseBuilder, clientConfig.isUseRefreshToken());
+        checkDPoPToken(responseBuilder, clientConfig.isUseRefreshToken() && (client.isPublicClient() || client.isBearerOnly()));
 
         if (TokenUtil.isOIDCRequest(scopeParam)) {
             responseBuilder.generateIDToken().generateAccessTokenHash();
@@ -601,21 +597,29 @@ public class TokenEndpoint {
             throw new CorsErrorResponseException(cors, cpe.getError(), cpe.getErrorDetail(), cpe.getErrorStatus());
         }
 
-        checkDPoP(refreshToken);
+        checkDPoP();
 
         AccessTokenResponse res;
         try {
             // KEYCLOAK-6771 Certificate Bound Token
-            TokenManager.RefreshResult result = tokenManager.refreshAccessToken(session, session.getContext().getUri(), clientConnection, realm, client, refreshToken, event, headers, request);
-            res = result.getResponse();
+            TokenManager.AccessTokenResponseBuilder responseBuilder = tokenManager.refreshAccessToken(session, session.getContext().getUri(), clientConnection, realm, client, refreshToken, event, headers, request);
 
-            if (!result.isOfflineToken()) {
+            checkMtlsHoKToken(responseBuilder, clientConfig.isUseRefreshToken());
+            checkDPoPToken(responseBuilder, clientConfig.isUseRefreshToken() && (client.isPublicClient() || client.isBearerOnly()));
+
+            res = responseBuilder.build();
+
+            if (!responseBuilder.isOfflineToken()) {
                 UserSessionModel userSession = session.sessions().getUserSession(realm, res.getSessionState());
                 AuthenticatedClientSessionModel clientSession = userSession.getAuthenticatedClientSessionByClient(client.getId());
                 updateClientSession(clientSession);
                 updateUserSessionFromClientAuth(userSession);
             }
 
+            // KEYCLOAK-15169 OAuth 2.0 Demonstrating Proof-of-Possession at the Application Layer (DPoP)
+            if (clientConfig.isDPoPEnabled()) {
+                res.setTokenType(DPoPUtil.DPOP_TOKEN_TYPE);
+            }
         } catch (OAuthErrorException e) {
             logger.trace(e.getMessage(), e);
             // KEYCLOAK-6771 Certificate Bound Token
@@ -741,7 +745,7 @@ public class TokenEndpoint {
         }
 
         // TODO : do the same as codeToToken()
-        checkDPoPToken(responseBuilder, clientConfig.isUseRefreshToken());
+        checkDPoPToken(responseBuilder, clientConfig.isUseRefreshToken() && (client.isPublicClient() || client.isBearerOnly()));
         AccessTokenResponse res = responseBuilder.build();
 
         if (clientConfig.isDPoPEnabled()) {

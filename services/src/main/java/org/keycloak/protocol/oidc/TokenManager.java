@@ -357,7 +357,7 @@ public class TokenManager {
     }
 
 
-    public RefreshResult refreshAccessToken(KeycloakSession session, UriInfo uriInfo, ClientConnection connection, RealmModel realm, ClientModel authorizedClient,
+    public AccessTokenResponseBuilder refreshAccessToken(KeycloakSession session, UriInfo uriInfo, ClientConnection connection, RealmModel realm, ClientModel authorizedClient,
                                             String encodedRefreshToken, EventBuilder event, HttpHeaders headers, HttpRequest request) throws OAuthErrorException {
         RefreshToken refreshToken = verifyRefreshToken(session, realm, authorizedClient, request, encodedRefreshToken, true);
 
@@ -395,32 +395,12 @@ public class TokenManager {
             responseBuilder.getRefreshToken().setAuthorization(validation.newToken.getAuthorization());
         }
 
-        // KEYCLOAK-6771 Certificate Bound Token
-        // https://tools.ietf.org/html/draft-ietf-oauth-mtls-08#section-3.1
-        // KEYCLOAK-15169 OAuth 2.0 Demonstrating Proof-of-Possession at the Application Layer (DPoP)
-        // https://tools.ietf.org/id/draft-ietf-oauth-dpop-04.html#section-6
-        // bind refreshed access and refresh token with Client Certificate and/or DPoP key
-        AccessToken.Confirmation confirmation = refreshToken.getConfirmation();
-        if (confirmation != null) {
-            responseBuilder.getAccessToken().setConfirmation(confirmation);
-            if (clientConfig.isUseRefreshToken()) {
-                responseBuilder.getRefreshToken().setConfirmation(confirmation);
-            }
-        }
-
         String scopeParam = clientSession.getNote(OAuth2Constants.SCOPE);
         if (TokenUtil.isOIDCRequest(scopeParam)) {
             responseBuilder.generateIDToken().generateAccessTokenHash();
         }
 
-        AccessTokenResponse res = responseBuilder.build();
-
-        // KEYCLOAK-15169 OAuth 2.0 Demonstrating Proof-of-Possession at the Application Layer (DPoP)
-        if (clientConfig.isDPoPEnabled()) {
-            res.setTokenType(DPoPUtil.DPOP_TOKEN_TYPE);
-        }
-
-        return new RefreshResult(res, TokenUtil.TOKEN_TYPE_OFFLINE.equals(refreshToken.getType()));
+        return responseBuilder;
     }
 
     private void validateTokenReuseForRefresh(KeycloakSession session, RealmModel realm, RefreshToken refreshToken,
@@ -501,7 +481,7 @@ public class TokenManager {
             }
 
             // KEYCLOAK-15169 OAuth 2.0 Demonstrating Proof-of-Possession at the Application Layer (DPoP)
-            if (OIDCAdvancedConfigWrapper.fromClientModel(client).isDPoPEnabled()) {
+            if (OIDCAdvancedConfigWrapper.fromClientModel(client).isDPoPEnabled() && (client.isPublicClient() || client.isBearerOnly())) {
                 DPoP dPoP = (DPoP) session.getAttribute("dpop");
                 try {
                     DPoPUtil.validateBinding(refreshToken, dPoP);
@@ -1154,6 +1134,10 @@ public class TokenManager {
             return this;
         }
 
+        public boolean isOfflineToken() {
+            return refreshToken != null && TokenUtil.TOKEN_TYPE_OFFLINE.equals(refreshToken.getType());
+        }
+
         public AccessTokenResponse build() {
             if (accessToken != null) {
                 event.detail(Details.TOKEN_ID, accessToken.getId());
@@ -1232,25 +1216,6 @@ public class TokenManager {
             return HashUtils.encodeHashToOIDC(hash);
         }
 
-    }
-
-    public static class RefreshResult {
-
-        private final AccessTokenResponse response;
-        private final boolean offlineToken;
-
-        private RefreshResult(AccessTokenResponse response, boolean offlineToken) {
-            this.response = response;
-            this.offlineToken = offlineToken;
-        }
-
-        public AccessTokenResponse getResponse() {
-            return response;
-        }
-
-        public boolean isOfflineToken() {
-            return offlineToken;
-        }
     }
 
     public static class NotBeforeCheck implements TokenVerifier.Predicate<JsonWebToken> {
