@@ -314,8 +314,8 @@ public class TokenEndpoint {
     private void checkDPoP() {
         if (clientConfig.isDPoPEnabled()) {
             try {
-                dPoP = DPoPUtil.validateDPoP(session, client, headers, request, session.getContext().getUri());
-                session.setAttribute("dpop", dPoP);
+                dPoP = new DPoPUtil.Validator(session).client(client).request(request).validate();
+                session.setAttribute(DPoPUtil.DPOP_SESSION_ATTRIBUTE, dPoP);
             } catch (VerificationException ex) {
                 event.error(Errors.INVALID_DPOP_PROOF);
                 throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_DPOP_PROOF, ex.getMessage(), Response.Status.BAD_REQUEST);
@@ -585,6 +585,8 @@ public class TokenEndpoint {
     }
 
     public Response refreshTokenGrant() {
+        checkDPoP();
+
         String refreshToken = formParams.getFirst(OAuth2Constants.REFRESH_TOKEN);
         if (refreshToken == null) {
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "No refresh token", Response.Status.BAD_REQUEST);
@@ -596,8 +598,6 @@ public class TokenEndpoint {
             event.error(cpe.getError());
             throw new CorsErrorResponseException(cors, cpe.getError(), cpe.getErrorDetail(), cpe.getErrorStatus());
         }
-
-        checkDPoP();
 
         AccessTokenResponse res;
         try {

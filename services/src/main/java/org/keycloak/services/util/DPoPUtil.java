@@ -23,8 +23,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.UriInfo;
+import javax.ws.rs.core.UriBuilder;
 
 import org.jboss.resteasy.spi.HttpRequest;
 
@@ -59,6 +58,8 @@ public class DPoPUtil {
     public static final String DPOP_TOKEN_TYPE = "DPoP";
     public static final String DPOP_SCHEME = "DPoP";
     public final static String DPOP_SESSION_ATTRIBUTE = "dpop";
+    public final static String DPOP_PARAM = "dpop";
+    public final static String DPOP_THUMBPRINT_NOTE = "dpop.thumbprint";
 
     public static enum Mode {
         ENABLED,
@@ -66,8 +67,8 @@ public class DPoPUtil {
         DISABLED
     }
 
-    private static final String DPOP_HEADER = "DPoP";
-    private static final String DPOP_HEADER_TYPE = "dpop+jwt";
+    private static final String DPOP_HTTP_HEADER = "DPoP";
+    private static final String DPOP_JWT_HEADER_TYPE = "dpop+jwt";
     private static final String DPOP_ATH_ALG = "RS256";
 
     public static final Set<String> DPOP_SUPPORTED_ALGS = Stream.of(
@@ -82,12 +83,11 @@ public class DPoPUtil {
         Algorithm.RS512
     ).collect(Collectors.toSet());
 
-    public static DPoP validateDPoP(KeycloakSession session, ClientModel client, HttpHeaders headers, HttpRequest request, UriInfo uri) throws VerificationException {
-        return validateDPoP(session, client, headers, request, uri, null);
+    private static URI normalize(URI uri) {
+        return UriBuilder.fromUri(uri).replaceQuery("").build();
     }
 
-    public static DPoP validateDPoP(KeycloakSession session, ClientModel client, HttpHeaders headers, HttpRequest request, UriInfo uri, String tokenString) throws VerificationException {
-        String token = headers.getHeaderString(DPOP_HEADER);
+    private static DPoP validateDPoP(KeycloakSession session, URI uri, String method, String token, String accessToken, int lifetime, int clockSkew) throws VerificationException {
 
         if (token == null || token.trim().equals("")) {
             throw new VerificationException("DPoP proof is missing");
@@ -102,7 +102,7 @@ public class DPoPUtil {
             throw new VerificationException("DPoP header verification failure");
         }
 
-        if (!DPOP_HEADER_TYPE.equals(header.getType())) {
+        if (!DPOP_JWT_HEADER_TYPE.equals(header.getType())) {
             throw new VerificationException("Invalid or missing type in DPoP header: " + header.getType());
         }
 
@@ -132,12 +132,12 @@ public class DPoPUtil {
         verifier.verifierContext(signatureVerifier);
         verifier.withChecks(
                 DPoPClaimsCheck.INSTANCE,
-                new DPoPHTTPCheck(request, uri),
-                new DPoPIsActiveCheck(session, client),
-                new DPoPReplayCheck(session, client));
+                new DPoPHTTPCheck(uri, method),
+                new DPoPIsActiveCheck(session, lifetime, clockSkew),
+                new DPoPReplayCheck(session, lifetime));
 
-        if (tokenString != null) {
-            verifier.withChecks(new DPoPAccessTokenHashCheck(tokenString));
+        if (accessToken != null) {
+            verifier.withChecks(new DPoPAccessTokenHashCheck(accessToken));
         }
 
         try {
@@ -164,7 +164,7 @@ public class DPoPUtil {
         }
     }
 
-    public static void bindToken(AccessToken token, DPoP dPoP) {
+    public static void bindToken(AccessToken token, String thumbprint) {
         AccessToken.Confirmation confirmation = token.getConfirmation();
 
         if (confirmation == null) {
@@ -172,7 +172,11 @@ public class DPoPUtil {
             token.setConfirmation(confirmation);
         }
 
-        confirmation.setKeyThumbprint(dPoP.getThumbprint());
+        confirmation.setKeyThumbprint(thumbprint);
+    }
+
+    public static void bindToken(AccessToken token, DPoP dPoP) {
+        bindToken(token, dPoP.getThumbprint());
     }
 
     private static class DPoPClaimsCheck implements TokenVerifier.Predicate<DPoP> {
@@ -200,26 +204,27 @@ public class DPoPUtil {
 
     private static class DPoPHTTPCheck implements TokenVerifier.Predicate<DPoP> {
 
-        private final HttpRequest request;
-        private final UriInfo uri;
+        private final URI uri;
+        private final String method;
 
-        DPoPHTTPCheck(HttpRequest request, UriInfo uri) {
-            this.request = request;
+        DPoPHTTPCheck(URI uri, String method) {
             this.uri = uri;
+            this.method = method;
         }
 
         @Override
         public boolean test(DPoP t) throws DPoPVerificationException {
             try {
-                if (new URI(t.getHttpUri()).equals(uri.getAbsolutePath()) &&
-                    request.getHttpMethod().equals(t.getHttpMethod())) {
-                    return true;
-                } else {
-                    throw new DPoPVerificationException(t, "DPoP HTTP method/URL mismatch");
-                }
+                if (!normalize(new URI(t.getHttpUri())).equals(normalize(uri)))
+                    throw new DPoPVerificationException(t, "DPoP HTTP URL mismatch");
+
+                if (!method.equals(t.getHttpMethod()))
+                    throw new DPoPVerificationException(t, "DPoP HTTP method mismatch");
             } catch (URISyntaxException ex) {
                 throw new DPoPVerificationException(t, "Malformed HTTP URL in DPoP proof");
             }
+
+            return true;
         }
 
     }
@@ -229,10 +234,9 @@ public class DPoPUtil {
         private final KeycloakSession session;
         private final int lifetime;
 
-        public DPoPReplayCheck(KeycloakSession session, ClientModel client) {
+        public DPoPReplayCheck(KeycloakSession session, int lifetime) {
             this.session = session;
-            OIDCAdvancedConfigWrapper config = OIDCAdvancedConfigWrapper.fromClientModel(client);
-            this.lifetime = config.getDPoPProofLifetime();
+            this.lifetime = lifetime;
         }
 
         @Override
@@ -250,13 +254,12 @@ public class DPoPUtil {
 
     private static class DPoPIsActiveCheck implements TokenVerifier.Predicate<DPoP> {
 
-        private final int clockSkew;
         private final int lifetime;
+        private final int clockSkew;
 
-        public DPoPIsActiveCheck(KeycloakSession session, ClientModel client) {
-            OIDCAdvancedConfigWrapper config = OIDCAdvancedConfigWrapper.fromClientModel(client);
-            this.clockSkew = config.getDPoPAllowedClockSkew();
-            this.lifetime = config.getDPoPProofLifetime();
+        public DPoPIsActiveCheck(KeycloakSession session, int lifetime, int clockSkew) {
+            this.lifetime = lifetime;
+            this.clockSkew = clockSkew;
         }
 
         @Override
@@ -292,7 +295,7 @@ public class DPoPUtil {
 
     }
 
-    public static class DPoPBindingCheck implements TokenVerifier.Predicate<AccessToken> {
+    private static class DPoPBindingCheck implements TokenVerifier.Predicate<AccessToken> {
 
         private final DPoP proof;
 
@@ -324,6 +327,65 @@ public class DPoPUtil {
 
         public DPoPVerificationException(DPoP token, String message) {
             super(token, message);
+        }
+
+    }
+
+    public static class Validator {
+
+        private URI uri;
+        private String method;
+        private String dPoP;
+        private String accessToken;
+        private int clockSkew = DEFAULT_ALLOWED_CLOCK_SKEW;
+        private int lifetime = DEFAULT_PROOF_LIFETIME;
+
+        private final KeycloakSession session;
+
+        public Validator(KeycloakSession session) {
+            this.session = session;
+        }
+
+        public Validator request(HttpRequest request) {
+            this.uri = request.getUri().getAbsolutePath();
+            this.method = request.getHttpMethod();
+            this.dPoP = request.getHttpHeaders().getHeaderString(DPOP_HTTP_HEADER);
+            return this;
+        }
+
+        public Validator client(ClientModel client) {
+            OIDCAdvancedConfigWrapper config = OIDCAdvancedConfigWrapper.fromClientModel(client);
+            return clientConfig(config);
+        }
+
+        public Validator clientConfig(OIDCAdvancedConfigWrapper config) {
+            this.clockSkew = config.getDPoPAllowedClockSkew();
+            this.lifetime = config.getDPoPProofLifetime();
+            return this;
+        }
+
+        public Validator dPoP(String dPoP) {
+            this.dPoP = dPoP;
+            return this;
+        }
+
+        public Validator accessToken(String accessToken) {
+            this.accessToken = accessToken;
+            return this;
+        }
+
+        public Validator uri(String uri) throws URISyntaxException {
+            this.uri = new URI(uri);
+            return this;
+        }
+
+        public Validator method(String method) {
+            this.method = method;
+            return this;
+        }
+
+        public DPoP validate() throws VerificationException {
+            return validateDPoP(session, uri, method, dPoP, accessToken, lifetime, clockSkew);
         }
 
     }

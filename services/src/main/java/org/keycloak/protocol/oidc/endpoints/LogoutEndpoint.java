@@ -470,7 +470,7 @@ public class LogoutEndpoint {
     private void checkDPoP(String token) {
         if (clientConfig.isDPoPEnabled()) {
             try {
-                DPoP dPoP = DPoPUtil.validateDPoP(session, client, headers, request, session.getContext().getUri(), token);
+                DPoP dPoP = new DPoPUtil.Validator(session).client(client).request(request).accessToken(token).validate();
                 session.setAttribute("dpop", dPoP);
             } catch (VerificationException ex) {
                 event.error(Errors.INVALID_DPOP_PROOF);
