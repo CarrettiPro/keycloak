@@ -45,6 +45,7 @@ import org.keycloak.services.Urls;
 import org.keycloak.services.clientregistration.ClientRegistrationService;
 import org.keycloak.services.clientregistration.oidc.OIDCClientRegistrationProviderFactory;
 import org.keycloak.services.resources.RealmsResource;
+import org.keycloak.services.util.DPoPUtil;
 import org.keycloak.urls.UrlType;
 import org.keycloak.util.JsonSerialization;
 import org.keycloak.wellknown.WellKnownProvider;
@@ -54,6 +55,7 @@ import javax.ws.rs.core.UriInfo;
 
 import java.net.URI;
 import java.util.AbstractMap;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -179,6 +181,10 @@ public class OIDCWellKnownProvider implements WellKnownProvider {
         // KEYCLOAK-6771 Certificate Bound Token
         // https://tools.ietf.org/html/draft-ietf-oauth-mtls-08#section-6.2
         config.setTlsClientCertificateBoundAccessTokens(true);
+
+        // KEYCLOAK-15169 OAuth 2.0 Demonstrating Proof-of-Possession at the Application Layer (DPoP)
+        // https://tools.ietf.org/id/draft-ietf-oauth-dpop-07.html#section-5.1
+        config.setDpopSigningAlgValuesSupported(new ArrayList<>(DPoPUtil.DPOP_SUPPORTED_ALGS));
 
         URI revocationEndpoint = frontendUriBuilder.clone().path(OIDCLoginProtocolService.class, "revoke")
             .build(realm.getName(), OIDCLoginProtocol.LOGIN_PROTOCOL);
