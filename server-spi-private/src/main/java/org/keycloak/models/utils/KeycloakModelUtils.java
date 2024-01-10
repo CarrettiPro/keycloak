@@ -22,6 +22,7 @@ import org.keycloak.Config;
 import org.keycloak.Config.Scope;
 import org.keycloak.broker.social.SocialIdentityProvider;
 import org.keycloak.broker.social.SocialIdentityProviderFactory;
+import org.keycloak.common.ClientConnection;
 import org.keycloak.common.util.CertificateUtils;
 import org.keycloak.common.util.KeyUtils;
 import org.keycloak.common.util.PemUtils;
@@ -29,6 +30,7 @@ import org.keycloak.common.util.SecretGenerator;
 import org.keycloak.common.util.Time;
 import org.keycloak.component.ComponentModel;
 import org.keycloak.crypto.Algorithm;
+import org.keycloak.http.HttpRequest;
 import org.keycloak.models.AuthenticationExecutionModel;
 import org.keycloak.models.AuthenticationFlowModel;
 import org.keycloak.models.ClientModel;
@@ -56,7 +58,12 @@ import javax.crypto.spec.SecretKeySpec;
 import jakarta.transaction.InvalidTransactionException;
 import jakarta.transaction.SystemException;
 import jakarta.transaction.Transaction;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.Response;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.security.Key;
 import java.security.KeyPair;
 import java.security.PrivateKey;
@@ -1032,4 +1039,31 @@ public final class KeycloakModelUtils {
         });
     }
 
+    public static boolean isLocalRequest(final KeycloakContext keycloakContext) {
+        try {
+            ClientConnection clientConnection = keycloakContext.getConnection();
+            InetAddress remoteInetAddress = InetAddress.getByName(clientConnection.getRemoteAddr());
+            InetAddress localInetAddress = InetAddress.getByName(clientConnection.getLocalAddr());
+            HttpRequest request = keycloakContext.getHttpRequest();
+            HttpHeaders headers = request.getHttpHeaders();
+            String xForwardedFor = headers.getHeaderString("X-Forwarded-For");
+            logger.debugf(
+                    "Checking whether current request is a local request. Remote address: %s, Local address: %s, X-Forwarded-For header: %s",
+                    remoteInetAddress.toString(), localInetAddress.toString(), xForwardedFor);
+
+            // Access through AJP protocol (loadbalancer) may cause that remoteAddress is "127.0.0.1".
+            // So consider that welcome page accessed locally just if it was accessed really through "localhost" URL and
+            // without loadbalancer (x-forwarded-for header is empty).
+            final boolean isLocal =
+                    isLocalAddress(remoteInetAddress) && isLocalAddress(localInetAddress) && xForwardedFor == null;
+            logger.debugf("Checked whether current request is a local request: %b", isLocal);
+            return isLocal;
+        } catch (UnknownHostException e) {
+            throw new WebApplicationException(e, Response.Status.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private static boolean isLocalAddress(InetAddress inetAddress) {
+        return inetAddress.isAnyLocalAddress() || inetAddress.isLoopbackAddress();
+    }
 }

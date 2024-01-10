@@ -24,22 +24,29 @@ import java.util.function.BiConsumer;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.Response.ResponseBuilder;
 import org.jboss.logging.Logger;
+import org.keycloak.common.util.Resteasy;
+import org.keycloak.common.util.UriUtils;
 import org.keycloak.http.HttpRequest;
 import org.keycloak.common.util.CollectionUtil;
 import org.keycloak.http.HttpResponse;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.KeycloakUriInfo;
+import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.protocol.oidc.utils.WebOriginsUtils;
 import org.keycloak.representations.AccessToken;
+import org.keycloak.services.ForbiddenException;
+import org.keycloak.urls.UrlType;
 
 /**
  * @author <a href="mailto:sthorger@redhat.com">Stian Thorgersen</a>
  */
 public class DefaultCorsImpl implements Cors {
 
-    private static final Logger logger = Logger.getLogger(Cors.class);
+    private static final Logger logger = Logger.getLogger(DefaultCorsImpl.class);
 
-    private HttpRequest request;
+    private final KeycloakSession session;
+    private final HttpRequest request;
     private ResponseBuilder builder;
     private Set<String> allowedOrigins;
     private Set<String> allowedMethods;
@@ -48,13 +55,14 @@ public class DefaultCorsImpl implements Cors {
     private boolean preflight;
     private boolean auth;
 
-    DefaultCorsImpl(HttpRequest request, ResponseBuilder response) {
+    DefaultCorsImpl(final HttpRequest request, final ResponseBuilder response) {
         this.request = request;
         this.builder = response;
+        this.session = Resteasy.getContextData(KeycloakSession.class);
     }
 
-    DefaultCorsImpl(HttpRequest request) {
-        this.request = request;
+    DefaultCorsImpl(final HttpRequest request) {
+        this(request, null);
     }
 
     @Override
@@ -138,11 +146,16 @@ public class DefaultCorsImpl implements Cors {
             return;
         }
 
-        if (!preflight && (allowedOrigins == null || (!allowedOrigins.contains(origin) && !allowedOrigins.contains(ACCESS_CONTROL_ALLOW_ORIGIN_WILDCARD)))) {
+        if (!preflight && isNotAllowedOrigin(origin)) {
             if (logger.isDebugEnabled()) {
                 logger.debugv("Invalid CORS request: origin {0} not in allowed origins {1}", origin, allowedOrigins);
             }
-            return;
+
+            /*
+             * just throw an exception without any CORS headers: the client would not be allowed to read the headers
+             * anyway.
+             */
+            throw new ForbiddenException("CORS Error - Origin is not allowed: " + origin);
         }
 
         addHeader.accept(ACCESS_CONTROL_ALLOW_ORIGIN, origin);
@@ -172,6 +185,56 @@ public class DefaultCorsImpl implements Cors {
         if (preflight) {
             addHeader.accept(ACCESS_CONTROL_MAX_AGE, String.valueOf(DEFAULT_MAX_AGE));
         }
+    }
+
+    private boolean isNotAllowedOrigin(final String origin) {
+        return allowedOrigins == null ||
+                (!allowedOrigins.contains(origin)
+                        && !allowedOrigins.contains(ACCESS_CONTROL_ALLOW_ORIGIN_WILDCARD))
+                || !isSameOriginRequest(origin);
+    }
+
+    private boolean isSameOriginRequest(final String origin) {
+        boolean isSameOriginRequest = false;
+
+        for (final UrlType urlType : UrlType.values()) {
+            final boolean isOriginMatchingUrlType;
+            switch (urlType) {
+                case FRONTEND:
+                case BACKEND:
+                case ADMIN:
+                    isOriginMatchingUrlType = isOriginMatching(origin, urlType);
+                    break;
+                case LOCAL_ADMIN:
+                    isOriginMatchingUrlType = isLocalRequest() && isOriginMatching(origin, urlType);
+                    break;
+                default:
+                    throw new IllegalStateException("Unsupported urlType: " + urlType);
+            }
+
+            if (isOriginMatchingUrlType) {
+                isSameOriginRequest = true;
+                break;
+            }
+        }
+
+        logger.debugf("Checked whether origin %s is a same origin request: %b", origin, isSameOriginRequest);
+        return isSameOriginRequest;
+    }
+
+    private boolean isLocalRequest() {
+        final boolean isLocalRequest = KeycloakModelUtils.isLocalRequest(session.getContext());
+        logger.debugf("Checked the current request is a local request: %b", isLocalRequest);
+        return isLocalRequest;
+    }
+
+    private boolean isOriginMatching(final String origin, final UrlType urlType) {
+        final KeycloakUriInfo uriInfo = new KeycloakUriInfo(session, urlType, request.getUri());
+        final String serverOrigin = UriUtils.getOrigin(uriInfo.getBaseUri());
+        final boolean isOriginMatching = serverOrigin.equals(origin);
+        logger.debugf("Checked origin %s matches the origin %s of urlType %s: %b", origin, serverOrigin, urlType,
+                isOriginMatching);
+        return isOriginMatching;
     }
 
 }
